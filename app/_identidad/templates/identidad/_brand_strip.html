@@ -1,0 +1,36 @@
+{#
+  Franja superior de marca (36px de alto). Va al toque arriba del header.
+
+  Variables esperadas (vienen del contexto del template padre):
+    - brand_variant   : 'plum' | 'helecho' | 'vulcan'  (default: 'plum')
+    - brand_subtitle  : str — texto de la derecha (ej: 'Compras & Caja' o 'Mayoristas')
+
+  Logo: el wordmark crema sobre fondo de color (mismo PNG en las 3 variantes
+  porque ya está en crema; el fondo lo da el `background` inline).
+#}
+{% set _v = brand_variant | default('plum') %}
+{% set _bg = {'plum': 'var(--plum)', 'helecho': 'var(--helecho)', 'vulcan': 'var(--ink)'}[_v] %}
+{% set _fg = '#FDF8EF' %}
+{% set _sub = brand_subtitle | default('Compras & Caja') %}
+
+<div class="brand-strip relative" style="background: {{ _bg }}; color: {{ _fg }};">
+  <div class="max-w-[1280px] mx-auto px-6 h-9 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-2.5">
+      <img src="{{ url_for('identidad.static', filename='logos/piccolina-crema-bordo_sm.png') }}"
+           alt="Piccolina" class="brand-strip-logo">
+      <span class="hidden md:inline text-[10px] smcaps-ink"
+            style="color: {{ _fg }}; opacity: 0.85;">
+        · Panadería &amp; Pastelería · Palermo
+      </span>
+    </div>
+    <div class="flex items-center gap-5 text-[10px] smcaps-ink"
+         style="color: {{ _fg }}; opacity: 0.85;">
+      <span class="hidden sm:inline">Lun–Sáb · 8 a 20:30 h</span>
+      <span class="hidden md:inline">{{ _sub }}</span>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full" style="background: #9ADCD3;"></span>
+        Sistema OK
+      </span>
+    </div>
+  </div>
+</div>

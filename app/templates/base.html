@@ -1,0 +1,146 @@
+{% extends 'identidad/base_identidad.html' %}
+
+{# Color de marca: Azul Acero para Vencimientos. Las variables CSS se
+   inyectan en :root y los partials las consumen. #}
+{% block brand_var %}--brand-vencimientos{% endblock %}
+{% block brand_var_2 %}#5B86A8{% endblock %}
+{% block brand_var_soft %}#D6E4F0{% endblock %}
+
+{% block favicon %}
+  <link rel="icon" type="image/png" sizes="any"
+        href="{{ url_for('identidad.static', filename='logos/logo_vencimientos.png') }}">
+  <link rel="apple-touch-icon" sizes="180x180"
+        href="{{ url_for('identidad.static', filename='logos/logo_vencimientos.png') }}">
+  <meta name="theme-color" content="#1E1C1D">
+  <meta name="apple-mobile-web-app-title" content="Piccolina · Vencimientos">
+{% endblock %}
+
+{% block extra_head %}
+  <style>
+    /* Color de marca propio de Vencimientos: Azul Acero */
+    :root { --brand-vencimientos: #5B86A8; }
+
+    /* La brand-strip por default es plum/helecho/vulcan; le piso un fill */
+    .brand-strip {
+      background: var(--brand-vencimientos) !important;
+    }
+
+    /* Clases utilitarias para el semáforo del listado */
+    .sem {
+      display: inline-block; padding: 3px 9px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .sem-rojo      { background: #FFD7D7; color: #8B1B1B; }
+    .sem-amarillo  { background: #FFF1C2; color: #7A5C00; }
+    .sem-verde     { background: #D6F1D6; color: #1F6F1F; }
+    .sem-pagado    { background: #EAEAEA; color: #888888; }
+    .sem-en_plan   { background: #DCEEFB; color: #1F4F7A; }
+    .sem-sin_fecha { background: #FFE0B2; color: #B85C00; }
+
+    tr.row-pagado td { background: #fafafa; color: #888888; }
+    tr.row-en_plan td { background: rgba(220, 238, 251, 0.4); }
+
+    .tag-estimado {
+      font-size: 11px; color: var(--ink-3, #888);
+      font-style: italic; margin-left: 4px;
+    }
+    .tag-falta {
+      display: inline-block; background: #FFE0B2; color: #B85C00;
+      padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    }
+
+    /* Subtotales / headers de categoría */
+    .cat-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin: 22px 0 8px; padding: 10px 14px;
+      background: var(--brand-soft); border-radius: 8px 8px 0 0;
+    }
+    .cat-header .nombre {
+      font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .cat-header .subtotales { font-size: 12px; color: var(--ink-3, #666); }
+    .cat-header .subtotales strong { color: var(--ink, #1E1C1D); }
+
+    /* Tabla de listado — reusa la línea de Mayorista */
+    table.lista {
+      width: 100%; border-collapse: collapse;
+      background: white; border-radius: 8px; overflow: hidden;
+      border: 1px solid var(--rule);
+    }
+    table.lista th {
+      background: var(--ink, #1E1C1D); color: var(--peach, #FDF8EF);
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+      padding: 10px 12px; text-align: left;
+    }
+    table.lista td {
+      padding: 10px 12px; border-bottom: 1px solid var(--rule);
+      vertical-align: middle; font-size: 14px;
+    }
+    table.lista tr:hover td { background: rgba(91, 134, 168, 0.06); }
+
+    /* Modal genérico */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(30, 28, 29, 0.55);
+      display: grid; place-items: center; z-index: 200;
+    }
+    .modal {
+      background: white; border-radius: 10px; padding: 24px;
+      width: min(520px, 95vw); max-height: 90vh; overflow-y: auto;
+    }
+    .modal h2 { margin-top: 0; }
+    .modal label {
+      display: block; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--ink-3, #666); margin: 12px 0 4px;
+    }
+    .modal input, .modal select, .modal textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--rule);
+      border-radius: 6px; font-size: 14px; background: white;
+    }
+    /* Checkboxes: no full-width, alineados al lado del label */
+    .modal input[type="checkbox"] {
+      width: auto; margin: 0 6px 0 0; padding: 0;
+      vertical-align: middle;
+    }
+    .modal label.flex {
+      flex-direction: row; align-items: center;
+    }
+    .modal .modal-actions {
+      margin-top: 22px; display: flex; gap: 10px; justify-content: flex-end;
+    }
+
+    /* Mobile: tabla → cards */
+    @media (max-width: 720px) {
+      table.lista thead { display: none; }
+      table.lista tr {
+        display: block; margin-bottom: 12px;
+        background: white; border-radius: 8px; padding: 12px;
+        border: 1px solid var(--rule);
+      }
+      table.lista td {
+        display: flex; justify-content: space-between;
+        padding: 6px 0; border: 0;
+      }
+      table.lista td::before {
+        content: attr(data-label);
+        font-size: 11px; text-transform: uppercase;
+        color: var(--ink-3, #666); letter-spacing: 0.4px;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    // Auto-ocultar flash después de 3 segundos (si existen)
+    setTimeout(() => {
+      document.querySelectorAll('main .px-4.py-3.rounded').forEach(el => {
+        el.style.transition = 'opacity 400ms';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 400);
+      });
+    }, 3000);
+  </script>
+  {% block scripts %}{% endblock %}
+{% endblock %}

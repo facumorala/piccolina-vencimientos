@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Nueva ficha' if es_nueva else 'Editar ficha' }} · Manual{% endblock %}
+
+{% block content %}
+  <section class="pt-10 pb-4">
+    <div class="flex items-center gap-3 text-[12px] mb-4">
+      <a href="{{ url_for('fichas.list_view') }}"
+         style="color: var(--ink-3); text-decoration: none;">← Manual</a>
+      {% if not es_nueva %}
+        <span style="color: var(--ink-3);">·</span>
+        <a href="{{ url_for('fichas.detalle', tipo=f.tipo) }}"
+           style="color: var(--ink-3); text-decoration: none;">{{ f.tipo }}</a>
+      {% endif %}
+    </div>
+    <div class="smcaps mb-2" style="color: var(--brand);">· MANUAL ·</div>
+    <h1 class="huge" style="font-size: clamp(28px, 3.5vw, 42px);">
+      {{ 'Nueva ficha — ' + tipo if es_nueva else 'Editar ficha de ' + f.tipo }}
+    </h1>
+    {% if es_nueva %}
+      <p class="thin mt-3 text-[14px]" style="color: var(--ink-2); max-width: 620px;">
+        Todos los casilleros son opcionales. Cargá lo que tengas a mano —
+        después podés volver y completar el resto.
+      </p>
+    {% endif %}
+  </section>
+
+  <form method="post" class="pb-16" style="max-width: 760px;">
+    <div class="ficha-form-bloque">
+      <label class="form-label">Categoría</label>
+      <select name="categoria" class="input-box" required>
+        <option value="">— elegir —</option>
+        {% for cat in categorias %}
+          <option value="{{ cat }}"
+                  {% if f and f.categoria == cat %}selected{% endif %}>
+            {{ cat | label_categoria }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="ficha-form-bloque">
+      <label class="form-label">Título (opcional, para mostrar)</label>
+      <input class="input-box" name="titulo" type="text"
+             placeholder="ej: IVA — Impuesto al Valor Agregado"
+             value="{{ f.titulo if f else '' }}">
+      <p class="ayuda">El nombre largo. Si lo dejás vacío, se muestra "{{ tipo }}".</p>
+    </div>
+
+    <div class="ficha-form-bloque">
+      <label class="form-label">¿Qué es?</label>
+      <textarea class="input-box" name="que_es" rows="3"
+                placeholder="Descripción corta. ej: Impuesto mensual sobre la diferencia entre ventas y compras."
+                >{{ f.que_es if f else '' }}</textarea>
+    </div>
+
+    <div class="ficha-form-bloque">
+      <label class="form-label">¿De dónde se saca?</label>
+      <textarea class="input-box" name="de_donde_se_saca" rows="4"
+                placeholder="Web, organismo, pasos para llegar al comprobante. ej: AFIP → Mis Aplicaciones → IVA digital → ..."
+                >{{ f.de_donde_se_saca if f else '' }}</textarea>
+    </div>
+
+    <div class="ficha-form-bloque">
+      <label class="form-label">¿Cuándo aparece?</label>
+      <textarea class="input-box" name="cuando_aparece" rows="3"
+                placeholder="Timing típico. ej: Entre el día 3 y 8 del mes, una vez que las contadoras lo presentan."
+                >{{ f.cuando_aparece if f else '' }}</textarea>
+    </div>
+
+    <div class="ficha-form-bloque">
+      <label class="form-label">¿Cómo se paga?</label>
+      <textarea class="input-box" name="como_se_paga" rows="3"
+                placeholder="Medio de pago. ej: VEP desde el home banking del Galicia, sección Pagos AFIP."
+                >{{ f.como_se_paga if f else '' }}</textarea>
+    </div>
+
+    <div class="ficha-form-bloque">
+      <label class="form-label">Contactos</label>
+      <textarea class="input-box" name="contactos" rows="3"
+                placeholder="A quién llamar, mail, teléfono. ej: Agus Pérez · 11-5555-5555 · agus@contadora.com"
+                >{{ f.contactos if f else '' }}</textarea>
+    </div>
+
+    <div class="ficha-form-bloque">
+      <label class="form-label">Notas extra</label>
+      <textarea class="input-box" name="notas" rows="3"
+                placeholder="Cualquier cosa adicional que te sirva recordar."
+                >{{ f.notas if f else '' }}</textarea>
+    </div>
+
+    <div class="flex gap-2 mt-8 justify-end">
+      <a class="btn btn-ghost"
+         href="{{ url_for('fichas.detalle', tipo=f.tipo) if not es_nueva else url_for('fichas.list_view') }}">
+        Cancelar
+      </a>
+      <button class="btn btn-primary" type="submit">
+        {{ 'Crear ficha' if es_nueva else 'Guardar cambios' }}
+      </button>
+    </div>
+  </form>
+
+  <style>
+    .ficha-form-bloque { margin-top: 18px; }
+    .form-label {
+      display: block; font-size: 12px; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--ink-2); margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .ayuda { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+    textarea.input-box { font-family: inherit; resize: vertical; }
+  </style>
+{% endblock %}

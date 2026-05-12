@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Piccolina{% endblock %}</title>
+
+  {#
+    Favicon e iconos de sistema. Cada dashboard puede pisarlos definiendo
+    su propio `{% block favicon %}` (ej: Mayorista usa fondo verde, Compras
+    queda con fondo bordó por default).
+    El theme-color pinta la barra de estado del browser en mobile y diferencia
+    visualmente los dashboards sin depender solo del favicon.
+  #}
+  {% block favicon %}
+    <link rel="icon" type="image/png" sizes="any"
+          href="{{ url_for('identidad.static', filename='logos/logo-bordo-crema_sm.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180"
+          href="{{ url_for('identidad.static', filename='logos/logo-bordo-crema_sm.png') }}">
+    <meta name="theme-color" content="#990B1A">
+    <meta name="apple-mobile-web-app-title" content="Piccolina · Compras">
+  {% endblock %}
+
+  {# CSS principal del sistema visual — viene del blueprint 'identidad' #}
+  <link rel="stylesheet" href="{{ url_for('identidad.static', filename='css/piccolina.css') }}">
+
+  {# Tailwind CDN: sigue siendo necesario para layout (grid, flex, max-w, etc.).
+     Cuando migremos a build local, este link cambia por un build precompilado. #}
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if (window.tailwind) {
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              plum: '#990B1A', peach: '#FDF8EF', vulcan: '#1E1C1D',
+              helecho: '#005402', corn: '#FFEA8B', water: '#9ADCD3', rum: '#B68000',
+            },
+            fontFamily: { sans: ['"Sunset Gothic Pro"', 'system-ui', 'sans-serif'] }
+          }
+        }
+      };
+    }
+  </script>
+
+  {# Variables de override: cada dashboard puede pisar --brand acá.
+     Por defecto: bordó (Compras). Mayoristas pisa con verde. #}
+  <style>
+    :root {
+      --brand:      var({% block brand_var %}--plum{% endblock %});
+      --brand-2:    {% block brand_var_2 %}var(--plum-2){% endblock %};
+      --brand-soft: {% block brand_var_soft %}var(--plum-soft){% endblock %};
+    }
+    .avatar              { background: var(--brand-soft); color: var(--brand); }
+    .navlink.active::after { background: var(--brand); }
+    .btn-primary:hover   { background: var(--brand); }
+    .btn-link            { color: var(--brand); }
+  </style>
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+  {# Shell: cada parte es un block overridable.
+     Páginas como /login pueden hacer `{% block shell_header %}{% endblock %}`
+     para esconder la nav, manteniendo el strip y el footer minimal. #}
+  {% block shell_strip %}
+    {% include 'identidad/_brand_strip.html' %}
+  {% endblock %}
+
+  {% block shell_header %}
+    {% include 'identidad/_header.html' %}
+  {% endblock %}
+
+  <main class="{% block main_class %}max-w-[1280px] mx-auto px-6 space-y-8 md:space-y-12 pb-16{% endblock %}">
+
+    {# Mensajes flash de Flask con estilo de la identidad #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="space-y-2 pt-4">
+          {% for category, msg in messages %}
+            {% set _color = {'success':'var(--ok)', 'error':'var(--plum)', 'warning':'var(--warn)'}.get(category, 'var(--ink-2)') %}
+            <div class="px-4 py-3 rounded text-[13px]"
+                 style="border: 1px solid var(--rule); color: {{ _color }};
+                        background: rgba(255,255,255,0.6);">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block shell_footer %}
+    {% include 'identidad/_footer.html' %}
+  {% endblock %}
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

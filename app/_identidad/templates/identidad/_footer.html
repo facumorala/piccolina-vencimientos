@@ -1,0 +1,32 @@
+{#
+  Footer con patrón de puntos opcional + datos básicos.
+
+  Variables esperadas:
+    - app_label    : str — ej: 'Compras & Caja', 'Mayoristas'
+    - app_version  : str — ej: 'v0.3'
+    - show_pattern : bool — si muestra el dot-pattern arriba (default true)
+#}
+{% set _label = app_label | default('Sistema interno') %}
+{% set _version = app_version | default('v0.3') %}
+{% set _show_pattern = show_pattern if show_pattern is defined else True %}
+
+<footer class="mt-16 border-t" style="border-color: var(--rule);">
+  {% if _show_pattern %}
+  <div class="dot-pattern" style="height: 80px; opacity: 0.45;"></div>
+  {% endif %}
+  <div class="max-w-[1280px] mx-auto px-6 py-8 flex items-center justify-between flex-wrap gap-4">
+    <div class="flex items-center gap-3">
+      <img src="{{ url_for('identidad.static', filename='logos/logo_sm.png') }}"
+           alt="" class="h-7 w-auto">
+      <div class="text-[12px]" style="color: var(--ink-3);">
+        <div>Piccolina · {{ _label }}</div>
+        <div class="smcaps mt-0.5" style="font-size: 9px;">{{ _version }} · Hecho a mano</div>
+      </div>
+    </div>
+    <div class="text-[11px] flex items-center gap-5" style="color: var(--ink-3);">
+      <a href="#" style="color: inherit; text-decoration: none;">Soporte</a>
+      <a href="#" style="color: inherit; text-decoration: none;">Docs</a>
+      <span>· Palermo, BA</span>
+    </div>
+  </div>
+</footer>

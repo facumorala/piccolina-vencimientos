@@ -1,0 +1,810 @@
+{% extends "base.html" %}
+{% block title %}Vencimientos · Piccolina{% endblock %}
+
+{% block content %}
+  {# ── Page header ─────────────────────────────────────────────────────── #}
+  <section class="pt-12 pb-6">
+    <div class="flex items-end justify-between flex-wrap gap-4">
+      <div>
+        <div class="smcaps mb-2" style="color: var(--brand);">· VENCIMIENTOS ·</div>
+        <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Listado</h1>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <form method="post" action="{{ url_for('vencimientos.generar_mes_proximo') }}"
+              onsubmit="return confirm('¿Generar los vencimientos recurrentes del próximo mes ahora?');">
+          <button class="btn btn-ghost" type="submit" title="Genera ya los recurrentes del próximo mes">
+            ⟳ Generar mes próximo
+          </button>
+        </form>
+        <button class="btn btn-primary" type="button"
+                onclick="abrirVtoNuevo()">+ Nuevo vencimiento</button>
+      </div>
+    </div>
+  </section>
+
+  {# ── Filtros ─────────────────────────────────────────────────────────── #}
+  <form id="form-filtros" method="get"
+        class="pb-6 border-b"
+        style="border-color: var(--rule);">
+
+    {# Fila 1: estado / estimado / categorías #}
+    <div class="flex flex-wrap items-center gap-3 mb-3">
+      <select name="estado" class="input-box" style="width: auto;">
+        <option value="no_pagado" {% if f_estado == 'no_pagado' %}selected{% endif %}>No pagado</option>
+        <option value="pagado"    {% if f_estado == 'pagado' %}selected{% endif %}>Pagado</option>
+        <option value="en_plan"   {% if f_estado == 'en_plan' %}selected{% endif %}>EN PLAN</option>
+        <option value="todos"     {% if f_estado == 'todos' %}selected{% endif %}>Todos</option>
+      </select>
+      <select name="estimado" class="input-box" style="width: auto;">
+        <option value=""   {% if f_estimado == '' %}selected{% endif %}>Estimado · cualquiera</option>
+        <option value="si" {% if f_estimado == 'si' %}selected{% endif %}>Solo estimados</option>
+        <option value="no" {% if f_estimado == 'no' %}selected{% endif %}>Solo confirmados</option>
+      </select>
+      <div class="flex flex-wrap gap-3 items-center">
+        {% for cat in categorias %}
+          <label class="flex items-center gap-1.5 text-[13px]" style="color: var(--ink-2);">
+            <input type="checkbox" name="categoria" value="{{ cat }}"
+                   {% if cat in f_categoria %}checked{% endif %}>
+            {{ cat | label_categoria }}
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Fila 2: filtros por fecha / período #}
+    <div class="flex flex-wrap items-end gap-3 pt-3 border-t" style="border-color: var(--rule-2, #eee);">
+      <div>
+        <label class="filtro-label">Por fecha de</label>
+        <select name="fecha_tipo" id="filtro-fecha-tipo" class="input-box" style="width: auto;"
+                onchange="toggleFiltrosFecha()">
+          <option value="vencimiento" {% if f_fecha_tipo == 'vencimiento' %}selected{% endif %}>Vencimiento</option>
+          <option value="pago"        {% if f_fecha_tipo == 'pago' %}selected{% endif %}>Fecha de pago</option>
+          <option value="periodo"     {% if f_fecha_tipo == 'periodo' %}selected{% endif %}>Período facturado</option>
+        </select>
+      </div>
+
+      <div id="bloque-rango" style="display: flex; gap: 8px; align-items: end;">
+        <div>
+          <label class="filtro-label">Desde</label>
+          <input class="input-box" name="fecha_desde" type="date"
+                 value="{{ f_fecha_desde.isoformat() if f_fecha_desde else '' }}"
+                 style="width: 160px;">
+        </div>
+        <div>
+          <label class="filtro-label">Hasta</label>
+          <input class="input-box" name="fecha_hasta" type="date"
+                 value="{{ f_fecha_hasta.isoformat() if f_fecha_hasta else '' }}"
+                 style="width: 160px;">
+        </div>
+      </div>
+
+      <div id="bloque-periodo" style="display: none;">
+        <label class="filtro-label">Buscar en período</label>
+        <input class="input-box" name="periodo_texto" type="text"
+               placeholder="ej: abril 2026, mar-abr"
+               value="{{ f_periodo_texto }}"
+               style="width: 220px;">
+      </div>
+
+      <div class="flex flex-wrap gap-2" id="atajos-fecha">
+        <button type="button" class="btn-atajo" onclick="setRango('hoy')">Hoy</button>
+        <button type="button" class="btn-atajo" onclick="setRango('mes_actual')">Este mes</button>
+        <button type="button" class="btn-atajo" onclick="setRango('mes_anterior')">Mes anterior</button>
+        <button type="button" class="btn-atajo" onclick="setRango('ano_actual')">Este año</button>
+        <button type="button" class="btn-atajo" onclick="setRango('ano_anterior')">Año anterior</button>
+        <button type="button" class="btn-atajo" onclick="setRango('limpiar')">Limpiar fechas</button>
+      </div>
+
+      <div class="flex gap-2 ml-auto">
+        <button class="btn btn-primary" type="submit">Filtrar</button>
+        <a class="btn btn-ghost" href="{{ url_for('vencimientos.list_view') }}">Limpiar todo</a>
+      </div>
+    </div>
+
+    <style>
+      .filtro-label {
+        display: block; font-size: 10px; text-transform: uppercase;
+        letter-spacing: 0.5px; color: var(--ink-3); margin-bottom: 4px;
+        font-weight: 600;
+      }
+      .btn-atajo {
+        font-size: 11px; padding: 5px 10px; border-radius: 999px;
+        background: white; border: 1px solid var(--rule);
+        cursor: pointer; transition: all 150ms;
+      }
+      .btn-atajo:hover { background: var(--brand-soft); border-color: var(--brand); }
+    </style>
+
+    <script>
+      function toggleFiltrosFecha() {
+        const tipo = document.getElementById('filtro-fecha-tipo').value;
+        const rango = document.getElementById('bloque-rango');
+        const periodo = document.getElementById('bloque-periodo');
+        const atajos = document.getElementById('atajos-fecha');
+        if (tipo === 'periodo') {
+          rango.style.display = 'none';
+          atajos.style.display = 'none';
+          periodo.style.display = 'block';
+        } else {
+          rango.style.display = 'flex';
+          atajos.style.display = 'flex';
+          periodo.style.display = 'none';
+        }
+      }
+      function setRango(opcion) {
+        const form = document.getElementById('form-filtros');
+        const hoy = new Date();
+        const ymd = (d) => d.toISOString().slice(0, 10);
+        let desde = '', hasta = '';
+        if (opcion === 'hoy') {
+          desde = hasta = ymd(hoy);
+        } else if (opcion === 'mes_actual') {
+          desde = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+          hasta = ymd(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0));
+        } else if (opcion === 'mes_anterior') {
+          desde = ymd(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1));
+          hasta = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 0));
+        } else if (opcion === 'ano_actual') {
+          desde = ymd(new Date(hoy.getFullYear(), 0, 1));
+          hasta = ymd(new Date(hoy.getFullYear(), 11, 31));
+        } else if (opcion === 'ano_anterior') {
+          desde = ymd(new Date(hoy.getFullYear() - 1, 0, 1));
+          hasta = ymd(new Date(hoy.getFullYear() - 1, 11, 31));
+        }
+        form.fecha_desde.value = desde;
+        form.fecha_hasta.value = hasta;
+        if (opcion !== 'limpiar') form.submit();
+      }
+      // Estado inicial
+      toggleFiltrosFecha();
+    </script>
+  </form>
+
+  {# ── Panel de resumen del filtrado actual ────────────────────────────── #}
+  {% if globales.cantidad > 0 %}
+    <section class="pt-6">
+      <div class="resumen-panel">
+        <div class="resumen-bloque">
+          <div class="resumen-label">Vencimientos</div>
+          <div class="resumen-valor">{{ globales.cantidad }}</div>
+        </div>
+        <div class="resumen-bloque">
+          <div class="resumen-label">Pagado</div>
+          <div class="resumen-valor" style="color: #1F6F1F;">{{ globales.pagado | money }}</div>
+          {% if globales.intereses_pagados %}
+            <div class="resumen-sub" style="color: #B85C00;">
+              incluye {{ globales.intereses_pagados | money }} de intereses
+            </div>
+          {% endif %}
+        </div>
+        <div class="resumen-bloque">
+          <div class="resumen-label">No pagado</div>
+          <div class="resumen-valor" style="color: #8B1B1B;">{{ globales.no_pagado | money }}</div>
+          {% if globales.intereses_pendientes %}
+            <div class="resumen-sub" style="color: #B85C00;">
+              incluye {{ globales.intereses_pendientes | money }} de intereses
+            </div>
+          {% endif %}
+        </div>
+        <div class="resumen-bloque">
+          <div class="resumen-label">Total</div>
+          <div class="resumen-valor">{{ globales.total | money }}</div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {# ── Listado agrupado ────────────────────────────────────────────────── #}
+  {% if not agrupados %}
+    <p class="pt-8" style="color: var(--ink-3);">No hay vencimientos con estos filtros.</p>
+  {% endif %}
+
+  {% for cat in categorias %}
+    {% if cat in agrupados %}
+      {% set sub = subtotales[cat] %}
+      {% set tiene_fechas_estimadas = cat in fechas_estimadas_por_cat %}
+      <section class="pt-8">
+        <div class="flex items-center justify-between mb-3 pb-2 border-b flex-wrap gap-2"
+             style="border-color: var(--ink);">
+          <div class="flex items-center gap-3">
+            <div class="smcaps" style="color: var(--brand);">· {{ cat | label_categoria }} ·</div>
+            {% if tiene_fechas_estimadas %}
+              <button type="button" class="btn-link"
+                      style="color: #B85C00; font-size: 11px;"
+                      onclick='abrirModalFechas("{{ cat }}", {{ fechas_estimadas_por_cat[cat] | length }})'>
+                ⚠ Confirmar {{ fechas_estimadas_por_cat[cat] | length }} fecha{{ 's' if fechas_estimadas_por_cat[cat]|length > 1 else '' }}
+              </button>
+            {% endif %}
+          </div>
+          <div class="text-[12px]" style="color: var(--ink-3);">
+            Total: <strong style="color: var(--ink);">{{ sub.total | money }}</strong>
+            · No pagado: <strong style="color: var(--ink);">{{ sub.no_pagado | money }}</strong>
+            {% if sub.pagado %}
+              · Pagado: <strong style="color: #1F6F1F;">{{ sub.pagado | money }}</strong>
+            {% endif %}
+            {% if sub.intereses_pendientes %}
+              · <span style="color: #B85C00;">Int. pendientes: <strong>{{ sub.intereses_pendientes | money }}</strong></span>
+            {% endif %}
+            {% if sub.intereses_pagados %}
+              · <span style="color: #B85C00;">Int. pagados: <strong>{{ sub.intereses_pagados | money }}</strong></span>
+            {% endif %}
+          </div>
+        </div>
+
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th>Período</th>
+              <th>Vencimiento</th>
+              <th>Estado</th>
+              <th>F. Pago</th>
+              <th style="text-align: right;">Importe</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tipo, lista in agrupados[cat].items() %}
+              {% for v in lista %}
+                {% set semaforo_clase = v.fecha_vencimiento | semaforo(v.pagado, v.plan_id is not none and v.plan_cuota_nro is none) %}
+                {% set data_vto = {
+                  'id': v.id,
+                  'categoria': v.categoria,
+                  'tipo': v.tipo,
+                  'concepto': v.concepto,
+                  'periodo_facturado': v.periodo_facturado or '',
+                  'monto': (v.monto | string) if v.monto is not none else '',
+                  'monto_estimado': v.monto_estimado,
+                  'estimado_monto_de': v.estimado_monto_de or '',
+                  'fecha_vencimiento': v.fecha_vencimiento.isoformat() if v.fecha_vencimiento else '',
+                  'fecha_estimada': v.fecha_estimada,
+                  'es_recurrente': v.es_recurrente,
+                  'pausado': v.pausado,
+                  'notas': v.notas or '',
+                  'pagado': v.pagado,
+                } | tojson %}
+                <tr class="row-{{ semaforo_clase }}">
+                  <td>
+                    <a href="#" onclick='abrirVtoEditar({{ data_vto }}); return false;'
+                       style="color: var(--ink); text-decoration: none; font-weight: 500;">
+                      {{ v.concepto }}
+                    </a>
+                    <button type="button"
+                            class="btn-ficha {{ 'ficha-llena' if v.tipo in tipos_con_ficha else 'ficha-vacia' }}"
+                            onclick='abrirFicha({{ v.tipo | tojson }}); return false;'
+                            title="{{ 'Ver instructivo de ' + v.tipo if v.tipo in tipos_con_ficha else 'Crear instructivo para ' + v.tipo }}">
+                      📖
+                    </button>
+                    {% if v.monto is none or v.fecha_vencimiento is none %}
+                      <span class="tag-falta">⚠ falta dato</span>
+                    {% endif %}
+                  </td>
+                  <td style="color: var(--ink-2);">{{ v.periodo_facturado or '—' }}</td>
+                  <td>
+                    <span class="num">{{ v.fecha_vencimiento | fecha }}</span>
+                    {% if v.fecha_estimada %}<span class="tag-estimado">(estimada)</span>{% endif %}
+                  </td>
+                  <td>
+                    <span class="sem sem-{{ semaforo_clase }}">
+                      {{ v.fecha_vencimiento | label_estado(v.pagado, v.plan_id is not none and v.plan_cuota_nro is none) }}
+                    </span>
+                  </td>
+                  <td class="num" style="color: var(--ink-2);">{{ v.fecha_pago | fecha }}</td>
+                  <td class="num" style="text-align: right;">
+                    {{ v.monto | money }}
+                    {% if v.monto_estimado %}<span class="tag-estimado">estimado</span>{% endif %}
+                    {% if v.monto_intereses %}
+                      <div class="tag-intereses"
+                           onclick='abrirIntereses({{ v.id }}, "{{ v.concepto|replace("\"", "")|e }}", "{{ v.monto_intereses }}", {{ (v.link_intereses or "") | tojson }}); event.stopPropagation();'
+                           title="Click para editar los intereses">
+                        + {{ v.monto_intereses | money }} intereses
+                      </div>
+                    {% endif %}
+                  </td>
+                  <td style="text-align: right;">
+                    {% if v.pagado %}
+                      <button class="btn btn-ghost" style="padding: 5px 12px; font-size: 11px;"
+                              onclick='abrirPopoverEditarPago({{ v.id }})'>Editar pago</button>
+                    {% else %}
+                      <button class="btn btn-primary" style="padding: 5px 14px; font-size: 11px;"
+                              onclick='abrirPopoverPagar({{ v.id }}, "{{ v.concepto|replace("\"", "")|e }}")'>Pagar</button>
+                      {% if not v.monto_intereses %}
+                        <button class="btn-link" style="display: block; margin: 4px 0 0 auto; font-size: 10.5px; color: #B85C00;"
+                                onclick='abrirIntereses({{ v.id }}, "{{ v.concepto|replace("\"", "")|e }}", "", "");'
+                                title="Cargar intereses por pago fuera de término">
+                          + Intereses
+                        </button>
+                      {% endif %}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+  {% endfor %}
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Vencimiento (sirve para nuevo y editar)                       #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-vto" class="modal-overlay" style="display: none;">
+    <div class="modal">
+      <h2 id="modal-vto-titulo" class="huge mb-4" style="font-size: 24px;">Nuevo vencimiento</h2>
+      <form id="form-vto" method="post" action="{{ url_for('vencimientos.nuevo') }}">
+
+        <label>Categoría</label>
+        <select name="categoria" class="input-box" required>
+          {% for cat in categorias %}<option value="{{ cat }}">{{ cat | label_categoria }}</option>{% endfor %}
+        </select>
+
+        <label>Tipo (ej: IVA, Edenor 1, Alquiler)</label>
+        <input class="input-box" name="tipo" type="text" required>
+
+        <label>Concepto (ej: IIBB nov 2025)</label>
+        <input class="input-box" name="concepto" type="text" required>
+
+        <label>Período facturado (ej: nov 2025, mar-abr 2026)</label>
+        <input class="input-box" name="periodo_facturado" type="text">
+
+        <label>Importe</label>
+        <input class="input-box" name="monto" type="number" step="0.01" placeholder="$">
+        <label class="flex items-center gap-2 mt-2" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
+          <input type="checkbox" name="monto_estimado"> Importe estimado
+        </label>
+        <input class="input-box mt-2" name="estimado_monto_de" type="text" placeholder="Aprox de: ej 'abril 2026'">
+
+        <label>Fecha de vencimiento</label>
+        <input class="input-box" name="fecha_vencimiento" type="date">
+        <label class="flex items-center gap-2 mt-2" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
+          <input type="checkbox" name="fecha_estimada"> Fecha estimada
+        </label>
+
+        <label class="flex items-center gap-2 mt-4" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
+          <input type="checkbox" name="esporadico"> Esporádico (no se repite cada mes)
+        </label>
+        <label class="flex items-center gap-2" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
+          <input type="checkbox" name="pausado"> Pausado (no se replica al próximo mes)
+        </label>
+
+        <label>Notas</label>
+        <textarea class="input-box" name="notas" rows="2"></textarea>
+
+        {# Selector de alcance: solo visible al editar un recurrente #}
+        <div id="bloque-alcance" style="display: none; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule);">
+          <label style="color: var(--brand);">Aplicar cambios a:</label>
+          <select name="alcance" class="input-box">
+            <option value="solo">Solo este vencimiento</option>
+            <option value="futuros">Este y los futuros pendientes</option>
+            <option value="todos">Todos los pendientes (incluye atrasados)</option>
+          </select>
+          <p class="text-[11px] mt-1" style="color: var(--ink-3);">
+            Es un recurrente. Elegí si los cambios se propagan a otros meses.
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-eliminar" class="btn btn-plum" type="button" style="display: none;"
+                  onclick="abrirModalEliminar()">Eliminar</button>
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-vto')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Eliminar con alcance                                          #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-eliminar" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 420px;">
+      <h2 class="huge mb-3" style="font-size: 22px;">Eliminar vencimiento</h2>
+      <p id="modal-eliminar-info" class="mb-4 text-[13px]" style="color: var(--ink-2);"></p>
+      <form id="form-eliminar" method="post">
+        <div id="bloque-alcance-eliminar" style="display: none;">
+          <label style="color: var(--brand);">Eliminar:</label>
+          <select name="alcance" class="input-box">
+            <option value="solo">Solo este vencimiento</option>
+            <option value="futuros">Este y los futuros pendientes</option>
+            <option value="todos">Todos los pendientes (incluye atrasados)</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-eliminar')">Cancelar</button>
+          <button class="btn btn-plum" type="submit">Confirmar eliminación</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Pagar                                                          #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-pagar" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 400px;">
+      <h2 id="modal-pagar-titulo" class="huge mb-4" style="font-size: 22px;">Pagar</h2>
+      <form id="form-pagar" method="post">
+        <label>Fecha de pago</label>
+        <input class="input-box" name="fecha_pago" type="date" required value="{{ today_ar() | string }}">
+
+        <label>Método</label>
+        <select class="input-box" name="metodo_pago">
+          <option value="">— elegir —</option>
+          <option value="efectivo">Efectivo</option>
+          <option value="transfer">Transferencia</option>
+          <option value="debito_automatico">Débito automático</option>
+          <option value="tarjeta">Tarjeta</option>
+        </select>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-pagar')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Confirmar pago</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Editar pago (deshacer pago)                                    #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-editar-pago" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 400px;">
+      <h2 class="huge mb-3" style="font-size: 22px;">Pago registrado</h2>
+      <p class="text-[13px] mb-4" style="color: var(--ink-2);">
+        ¿Querés deshacer este pago? El vencimiento vuelve a quedar como "no pagado".
+      </p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-editar-pago')">Cancelar</button>
+        <button class="btn btn-plum" type="button" onclick="eliminarPagoConfirm()">Eliminar pago</button>
+      </div>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Confirmar todas las fechas de una categoría                    #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-fechas" class="modal-overlay" style="display: none;">
+    <div class="modal">
+      <h2 id="modal-fechas-titulo" class="huge mb-2" style="font-size: 22px;">Confirmar fechas</h2>
+      <p class="text-[13px] mb-4" style="color: var(--ink-2);">
+        Cargá la fecha real de cada vencimiento. Al guardar, se quita la marca de
+        "fecha estimada" y se usa la fecha que pongas.
+      </p>
+      <form method="post" action="{{ url_for('vencimientos.confirmar_fechas') }}">
+        {% for cat, vtos in fechas_estimadas_por_cat.items() %}
+          <div data-cat="{{ cat }}" class="cat-fechas-block" style="display: none;">
+            {% for v in vtos %}
+              <div class="flex items-center justify-between gap-3 py-2 border-b"
+                   style="border-color: var(--rule-2);">
+                <div class="flex-1">
+                  <div style="font-weight: 500;">{{ v.concepto }}</div>
+                  <div class="text-[11px]" style="color: var(--ink-3);">
+                    estimada: {{ v.fecha_vencimiento | fecha }} · {{ v.monto | money }}
+                  </div>
+                </div>
+                <input class="input-box" type="date" name="fecha_{{ v.id }}"
+                       value="{{ v.fecha_vencimiento.isoformat() if v.fecha_vencimiento else '' }}"
+                       style="width: 160px;">
+              </div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-fechas')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Confirmar fechas</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Cargar / editar intereses                                       #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-intereses" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 460px;">
+      <h2 id="modal-intereses-titulo" class="huge mb-2" style="font-size: 22px;">Cargar intereses</h2>
+      <p class="text-[13px] mb-4" style="color: var(--ink-2);">
+        Cargá el monto de intereses por pago fuera de término que te pasaron
+        las contadoras. Sumá el link o nota del comprobante si lo tenés.
+      </p>
+      <form id="form-intereses" method="post">
+        <label>Monto de intereses</label>
+        <input class="input-box" name="monto_intereses" type="number" step="0.01" placeholder="$">
+        <p class="text-[11px] mt-1" style="color: var(--ink-3);">
+          Dejalo vacío o en 0 para borrar los intereses cargados.
+        </p>
+
+        <label class="mt-3">Link o nota (opcional)</label>
+        <textarea class="input-box" name="link_intereses" rows="3"
+                  placeholder="URL del VEP de intereses, o nota tipo: 'pedirle a Agus el comprobante'"></textarea>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-intereses')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Ficha / Instructivo (lectura)                                  #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-ficha" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 640px;">
+      <div id="modal-ficha-cargando" style="display: none; padding: 20px; text-align: center; color: var(--ink-3);">
+        Cargando ficha…
+      </div>
+      <div id="modal-ficha-vacia" style="display: none; padding: 8px;">
+        <h2 class="huge mb-3" style="font-size: 22px;">Sin instructivo cargado</h2>
+        <p class="text-[14px] mb-5" style="color: var(--ink-2);">
+          Todavía no hay ficha para <strong id="ficha-vacia-tipo"></strong>.
+          ¿Querés crearla ahora con la info de dónde se saca, cómo se paga, etc.?
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-ficha')">Después</button>
+          <a id="ficha-vacia-crear" class="btn btn-primary" href="#">Crear ficha</a>
+        </div>
+      </div>
+      <div id="modal-ficha-contenido" style="display: none;">
+        <div class="flex items-center gap-2 mb-2 text-[11px]">
+          <span class="smcaps" style="color: var(--brand);">· INSTRUCTIVO ·</span>
+          <span style="color: var(--ink-3);">·</span>
+          <span id="ficha-categoria" class="smcaps" style="color: var(--ink-3);"></span>
+        </div>
+        <h2 id="ficha-titulo" class="huge mb-1" style="font-size: 24px;"></h2>
+        <p id="ficha-tipo-secundario" class="text-[12px] mb-4" style="color: var(--ink-3); display: none;"></p>
+
+        <div id="ficha-bloques" style="max-height: 55vh; overflow-y: auto;"></div>
+
+        <p id="ficha-actualizado" class="text-[11px] mt-3" style="color: var(--ink-3);"></p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-ficha')">Cerrar</button>
+          <a id="ficha-ver-completa" class="btn-link" href="#" style="margin-right: auto;">Abrir página completa →</a>
+          <a id="ficha-editar" class="btn btn-primary" href="#">Editar</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .btn-ficha {
+      display: inline-block; padding: 0 4px; margin-left: 4px;
+      background: transparent; border: 0; cursor: pointer;
+      font-size: 14px; line-height: 1; vertical-align: middle;
+      transition: opacity 150ms, transform 100ms;
+    }
+    .btn-ficha:hover { transform: scale(1.15); }
+    .btn-ficha.ficha-vacia { opacity: 0.35; filter: grayscale(1); }
+    .btn-ficha.ficha-vacia:hover { opacity: 0.7; filter: grayscale(0.5); }
+    .ficha-bloque-modal {
+      margin-top: 14px; padding: 12px 14px;
+      background: #FAF7F0; border: 1px solid var(--rule);
+      border-radius: 6px;
+    }
+    .ficha-bloque-modal .label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--brand); font-weight: 600; margin-bottom: 6px;
+    }
+    .ficha-bloque-modal .valor {
+      white-space: pre-wrap; line-height: 1.5; font-size: 13.5px; color: var(--ink);
+    }
+
+    /* Panel de resumen global del filtro */
+    .resumen-panel {
+      display: grid; gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      padding: 16px 18px; background: white;
+      border: 1px solid var(--rule); border-radius: 10px;
+    }
+    .resumen-bloque {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .resumen-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--ink-3); font-weight: 600;
+    }
+    .resumen-valor {
+      font-size: 22px; font-weight: 700; color: var(--ink);
+    }
+    .resumen-sub {
+      font-size: 11px; font-style: italic;
+    }
+
+    /* Badge de intereses en cada fila */
+    .tag-intereses {
+      display: inline-block; margin-top: 4px; padding: 3px 8px;
+      background: #FFE0B2; color: #B85C00; border-radius: 999px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      transition: background 150ms;
+    }
+    .tag-intereses:hover { background: #FFCC80; }
+  </style>
+
+  <script>
+    // ── Helpers de modales ─────────────────────────────────────────────
+    function cerrarModal(id) { document.getElementById(id).style.display = 'none'; }
+    function abrirModal(id)  { document.getElementById(id).style.display = 'grid'; }
+
+    // ── Modal: ficha / instructivo ─────────────────────────────────────
+    const FICHA_LABELS = {
+      que_es:           '¿Qué es?',
+      de_donde_se_saca: '¿De dónde se saca?',
+      cuando_aparece:   '¿Cuándo aparece?',
+      como_se_paga:     '¿Cómo se paga?',
+      contactos:        'Contactos',
+      notas:            'Notas',
+    };
+    const CAT_LABEL = {
+      impuestos: 'Impuestos',
+      cargas_sociales: 'Cargas Sociales',
+      financiaciones: 'Financiaciones',
+      honorarios: 'Honorarios',
+      servicios: 'Servicios Piccolina',
+    };
+
+    async function abrirFicha(tipo) {
+      const overlay = document.getElementById('modal-ficha');
+      const cargando = document.getElementById('modal-ficha-cargando');
+      const vacia = document.getElementById('modal-ficha-vacia');
+      const contenido = document.getElementById('modal-ficha-contenido');
+      cargando.style.display = 'block';
+      vacia.style.display = 'none';
+      contenido.style.display = 'none';
+      abrirModal('modal-ficha');
+      try {
+        const url = '/manual/' + encodeURIComponent(tipo) + '/json';
+        const r = await fetch(url, { credentials: 'same-origin' });
+        const data = await r.json();
+        cargando.style.display = 'none';
+        if (!data.existe) {
+          document.getElementById('ficha-vacia-tipo').textContent = tipo;
+          document.getElementById('ficha-vacia-crear').href = data.url_crear;
+          vacia.style.display = 'block';
+          return;
+        }
+        // Renderizar contenido
+        document.getElementById('ficha-titulo').textContent = data.titulo;
+        document.getElementById('ficha-categoria').textContent = CAT_LABEL[data.categoria] || data.categoria;
+        const tipoSec = document.getElementById('ficha-tipo-secundario');
+        if (data.titulo && data.titulo !== data.tipo) {
+          tipoSec.textContent = 'Tipo: ' + data.tipo;
+          tipoSec.style.display = 'block';
+        } else {
+          tipoSec.style.display = 'none';
+        }
+        // Bloques
+        const cont = document.getElementById('ficha-bloques');
+        cont.innerHTML = '';
+        let tieneAlgo = false;
+        for (const key of ['que_es','de_donde_se_saca','cuando_aparece','como_se_paga','contactos','notas']) {
+          if (data[key]) {
+            tieneAlgo = true;
+            const div = document.createElement('div');
+            div.className = 'ficha-bloque-modal';
+            div.innerHTML =
+              '<div class="label"></div><div class="valor"></div>';
+            div.querySelector('.label').textContent = FICHA_LABELS[key];
+            div.querySelector('.valor').textContent = data[key];
+            cont.appendChild(div);
+          }
+        }
+        if (!tieneAlgo) {
+          cont.innerHTML = '<p class="text-[13px]" style="color: var(--ink-3); margin-top: 8px;">' +
+            'Esta ficha está creada pero los casilleros están vacíos. Tocá <em>Editar</em> para completarla.</p>';
+        }
+        // Footer
+        let foot = '';
+        if (data.actualizado_en) foot = 'Actualizada el ' + data.actualizado_en;
+        if (data.actualizado_por) foot += ' por ' + data.actualizado_por;
+        document.getElementById('ficha-actualizado').textContent = foot;
+        document.getElementById('ficha-editar').href = data.url_editar;
+        document.getElementById('ficha-ver-completa').href = data.url_detalle;
+        contenido.style.display = 'block';
+      } catch (e) {
+        cargando.style.display = 'none';
+        vacia.style.display = 'block';
+        document.getElementById('ficha-vacia-tipo').textContent = tipo + ' (error de red)';
+      }
+    }
+
+    // ── Modal: nuevo vencimiento ───────────────────────────────────────
+    function abrirVtoNuevo() {
+      const form = document.getElementById('form-vto');
+      form.reset();
+      form.action = "{{ url_for('vencimientos.nuevo') }}";
+      document.getElementById('modal-vto-titulo').textContent = 'Nuevo vencimiento';
+      document.getElementById('bloque-alcance').style.display = 'none';
+      document.getElementById('btn-eliminar').style.display = 'none';
+      _editarId = null;
+      abrirModal('modal-vto');
+    }
+
+    // ── Modal: editar vencimiento (se llena con los datos del row) ────
+    let _editarId = null;
+    function abrirVtoEditar(v) {
+      const form = document.getElementById('form-vto');
+      form.reset();
+      form.action = `/vencimientos/${v.id}/editar`;
+      document.getElementById('modal-vto-titulo').textContent = 'Editar: ' + v.concepto;
+      form.categoria.value = v.categoria;
+      form.tipo.value = v.tipo;
+      form.concepto.value = v.concepto;
+      form.periodo_facturado.value = v.periodo_facturado || '';
+      form.monto.value = v.monto || '';
+      form.monto_estimado.checked = v.monto_estimado;
+      form.estimado_monto_de.value = v.estimado_monto_de || '';
+      form.fecha_vencimiento.value = v.fecha_vencimiento || '';
+      form.fecha_estimada.checked = v.fecha_estimada;
+      form.esporadico.checked = !v.es_recurrente;
+      form.pausado.checked = v.pausado;
+      form.notas.value = v.notas || '';
+      // Mostrar selector de alcance solo si es recurrente
+      document.getElementById('bloque-alcance').style.display = v.es_recurrente ? 'block' : 'none';
+      // Botón eliminar visible al editar
+      document.getElementById('btn-eliminar').style.display = 'inline-flex';
+      _editarId = v.id;
+      _editarEsRecurrente = v.es_recurrente;
+      _editarConcepto = v.concepto;
+      abrirModal('modal-vto');
+    }
+
+    // ── Modal: eliminar con alcance ────────────────────────────────────
+    let _editarEsRecurrente = false;
+    let _editarConcepto = '';
+    function abrirModalEliminar() {
+      cerrarModal('modal-vto');
+      document.getElementById('modal-eliminar-info').textContent = '¿Eliminar "' + _editarConcepto + '"?';
+      document.getElementById('bloque-alcance-eliminar').style.display = _editarEsRecurrente ? 'block' : 'none';
+      document.getElementById('form-eliminar').action = `/vencimientos/${_editarId}/eliminar`;
+      abrirModal('modal-eliminar');
+    }
+
+    // ── Modal: pagar ───────────────────────────────────────────────────
+    function abrirPopoverPagar(vid, concepto) {
+      const form = document.getElementById('form-pagar');
+      form.action = `/vencimientos/${vid}/pagar`;
+      document.getElementById('modal-pagar-titulo').textContent = 'Pagar: ' + concepto;
+      abrirModal('modal-pagar');
+    }
+
+    // ── Modal: editar pago (deshacer) ──────────────────────────────────
+    let _eliminarPagoVid = null;
+    function abrirPopoverEditarPago(vid) {
+      _eliminarPagoVid = vid;
+      abrirModal('modal-editar-pago');
+    }
+    function eliminarPagoConfirm() {
+      const f = document.createElement('form');
+      f.method = 'POST';
+      f.action = `/vencimientos/${_eliminarPagoVid}/eliminar-pago`;
+      document.body.appendChild(f);
+      f.submit();
+    }
+
+    // ── Modal: cargar / editar intereses ───────────────────────────────
+    function abrirIntereses(vid, concepto, montoActual, linkActual) {
+      const form = document.getElementById('form-intereses');
+      form.reset();
+      form.action = '/vencimientos/' + vid + '/intereses';
+      document.getElementById('modal-intereses-titulo').textContent =
+        (montoActual ? 'Editar intereses: ' : 'Cargar intereses: ') + concepto;
+      if (montoActual) form.monto_intereses.value = montoActual;
+      if (linkActual)  form.link_intereses.value  = linkActual;
+      abrirModal('modal-intereses');
+    }
+
+    // ── Modal: confirmar todas las fechas de una categoría ─────────────
+    function abrirModalFechas(cat, n) {
+      // Ocultar todos los bloques de categoría
+      document.querySelectorAll('.cat-fechas-block').forEach(el => el.style.display = 'none');
+      // Mostrar solo el de la categoría pedida
+      const bloque = document.querySelector(`.cat-fechas-block[data-cat="${cat}"]`);
+      if (bloque) bloque.style.display = 'block';
+      document.getElementById('modal-fechas-titulo').textContent =
+        'Confirmar ' + n + ' fecha' + (n > 1 ? 's' : '') + ' estimadas';
+      abrirModal('modal-fechas');
+    }
+  </script>
+
+{% endblock %}

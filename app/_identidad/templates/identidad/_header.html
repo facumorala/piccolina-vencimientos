@@ -1,0 +1,114 @@
+{#
+  Header con navegación principal (56px, sticky con blur).
+
+  Variables esperadas (del template padre):
+    - app_label        : str — label al lado del logo (ej: 'Compras', 'Mayoristas')
+    - nav_pages        : list[dict] con {'key', 'label', 'href'}
+    - current_page_key : str — qué nav item marcar como activo
+    - search_placeholder (opcional) : str — placeholder del search
+    - user_initials    : str — iniciales del usuario logueado (ej: 'FA')
+    - notif_count      : int — número de notificaciones (puntito rojo si > 0)
+
+  Notas:
+    - El search hoy es decorativo (se conecta cuando haya endpoint).
+    - El bell tampoco es funcional en esta primera pasada.
+    - El avatar es un círculo con iniciales (no foto). Si más adelante hay foto, swap.
+#}
+{% from 'identidad/_icons.html' import icon %}
+{% set _label = app_label | default('') %}
+{% set _placeholder = search_placeholder | default('Buscar…') %}
+{% set _initials = user_initials | default('') %}
+{% set _notif = notif_count | default(0) %}
+
+<header class="sticky top-0 z-30"
+        style="background: rgba(255,255,255,0.85);
+               backdrop-filter: saturate(180%) blur(20px);
+               -webkit-backdrop-filter: saturate(180%) blur(20px);
+               border-bottom: 1px solid var(--rule);">
+  <div class="max-w-[1280px] mx-auto px-6 h-14 flex items-center justify-between gap-6">
+
+    {# Logo + label (link al home del propio dashboard) #}
+    <a href="{{ nav_pages[0].href if nav_pages else '/' }}"
+       class="flex items-center gap-2"
+       style="text-decoration: none; color: inherit;">
+      <img src="{{ url_for('identidad.static', filename='logos/logo_vencimientos.png') }}"
+           alt="Vencimientos" class="h-7 w-auto">
+      <span class="font-medium text-[15px] tracking-tight">{{ _label }}</span>
+    </a>
+
+    {# Navegación principal — se oculta en mobile #}
+    <nav class="hidden md:flex items-center gap-7 overflow-x-auto no-scrollbar">
+      {% for p in nav_pages %}
+        <a href="{{ p.href }}"
+           class="navlink whitespace-nowrap{% if p.key == current_page_key %} active{% endif %}">
+          {{ p.label }}
+        </a>
+      {% endfor %}
+    </nav>
+
+    {# Right side: search + bell + avatar + hamburguesa (mobile) #}
+    <div class="flex items-center gap-3">
+      <div class="relative hidden lg:block">
+        {{ icon('search', 'w-4 h-4 absolute left-0 top-1/2 -translate-y-1/2 opacity-50') }}
+        <input class="input" placeholder="{{ _placeholder }}">
+      </div>
+      <button class="relative p-2 -m-2" type="button" aria-label="Notificaciones">
+        {{ icon('bell', 'w-4 h-4') }}
+        {% if _notif > 0 %}
+        <span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
+              style="background: var(--plum);"></span>
+        {% endif %}
+      </button>
+      {% if _initials %}
+      <div class="avatar">{{ _initials }}</div>
+      {% endif %}
+      {# Botón hamburguesa — solo visible en mobile (oculto en md+) #}
+      <button id="nav-open" type="button" aria-label="Abrir menú"
+              class="md:hidden p-2 -m-2 -mr-1">
+        <svg class="ico w-5 h-5" viewBox="0 0 24 24">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+  </div>
+</header>
+
+{# Overlay oscuro detrás del drawer (solo mobile) #}
+<div id="nav-overlay" class="nav-overlay md:hidden" onclick="navClose()"></div>
+
+{# Panel lateral de navegación mobile #}
+<div id="nav-drawer" class="nav-drawer md:hidden" role="dialog" aria-label="Navegación">
+  <div class="flex items-center justify-between px-5 h-14"
+       style="border-bottom: 1px solid var(--rule);">
+    <span class="font-medium text-[15px] tracking-tight">{{ _label }}</span>
+    <button type="button" onclick="navClose()" aria-label="Cerrar menú" class="p-2 -mr-2">
+      <svg class="ico w-5 h-5" viewBox="0 0 24 24">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+  <nav class="flex flex-col px-4 py-3 gap-1">
+    {% for p in nav_pages %}
+      <a href="{{ p.href }}" onclick="navClose()"
+         class="nav-drawer-link{% if p.key == current_page_key %} active{% endif %}">
+        {{ p.label }}
+      </a>
+    {% endfor %}
+  </nav>
+</div>
+
+<script>
+  (function () {
+    var btn     = document.getElementById('nav-open');
+    var drawer  = document.getElementById('nav-drawer');
+    var overlay = document.getElementById('nav-overlay');
+    function navClose()  { drawer.classList.remove('is-open'); overlay.classList.remove('is-open'); }
+    function navToggle() { drawer.classList.toggle('is-open'); overlay.classList.toggle('is-open'); }
+    window.navClose = navClose;
+    btn.addEventListener('click', navToggle);
+  })();
+</script>

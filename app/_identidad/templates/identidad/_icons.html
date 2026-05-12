@@ -1,0 +1,61 @@
+{#
+  Sistema de iconos line-stroke de Piccolina.
+  Portado de assets/shell.jsx (objeto I).
+  Uso: {% from 'identidad/_icons.html' import icon %}
+       {{ icon('search', 'w-4 h-4') }}
+#}
+{% macro icon(name, css_class='w-4 h-4') -%}
+{%- if name == 'arrow' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M5 12h14M13 6l6 6-6 6"/></svg>
+{%- elif name == 'arrowL' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M19 12H5M11 6l-6 6 6 6"/></svg>
+{%- elif name == 'arrowUp' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M12 19V5M6 11l6-6 6 6"/></svg>
+{%- elif name == 'arrowDown' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M12 5v14M6 13l6 6 6-6"/></svg>
+{%- elif name == 'search' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><circle class="ico" cx="11" cy="11" r="6.5"/><path class="ico" d="M16 16l5 5"/></svg>
+{%- elif name == 'bell' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M6 17V11a6 6 0 0 1 12 0v6l1.5 1.5H4.5z"/><path class="ico" d="M10 21a2 2 0 0 0 4 0"/></svg>
+{%- elif name == 'plus' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M12 5v14M5 12h14"/></svg>
+{%- elif name == 'minus' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M5 12h14"/></svg>
+{%- elif name == 'bag' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M5 8h14l-1 12H6z"/><path class="ico" d="M9 8a3 3 0 0 1 6 0"/></svg>
+{%- elif name == 'truck' -%}
+<svg viewBox="0 0 28 24" class="{{ css_class }}"><path class="ico" d="M2 6h14v12H2z"/><path class="ico" d="M16 9h6l4 4v5h-10"/><circle class="ico" cx="7" cy="19" r="2"/><circle class="ico" cx="20" cy="19" r="2"/></svg>
+{%- elif name == 'cash' -%}
+<svg viewBox="0 0 28 20" class="{{ css_class }}"><rect class="ico" x="2" y="3" width="24" height="14" rx="1.5"/><circle class="ico" cx="14" cy="10" r="3"/></svg>
+{%- elif name == 'receipt' -%}
+<svg viewBox="0 0 20 24" class="{{ css_class }}"><path class="ico" d="M3 3h14v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><path class="ico" d="M6 8h8M6 12h8M6 16h5"/></svg>
+{%- elif name == 'bread' -%}
+<svg viewBox="0 0 28 24" class="{{ css_class }}"><path class="ico" d="M3 13c0-5 5-8 11-8s11 3 11 8c0 4-3 6-11 6S3 17 3 13z"/></svg>
+{%- elif name == 'warn' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M12 4l10 17H2z"/><path class="ico" d="M12 11v5"/><circle cx="12" cy="18.5" r=".9" fill="currentColor"/></svg>
+{%- elif name == 'check' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M5 12l4 4 10-10"/></svg>
+{%- elif name == 'clock' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><circle class="ico" cx="12" cy="12" r="9"/><path class="ico" d="M12 7v5l4 2"/></svg>
+{%- elif name == 'filter' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M3 5h18M6 12h12M10 19h4"/></svg>
+{%- elif name == 'download' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M12 4v12M6 11l6 6 6-6M4 20h16"/></svg>
+{%- elif name == 'more' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><circle cx="6"  cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18" cy="12" r="1.4" fill="currentColor"/></svg>
+{%- elif name == 'edit' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M4 20h4l11-11-4-4L4 16z"/><path class="ico" d="M14 6l4 4"/></svg>
+{%- elif name == 'pkg' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M3 7l9-4 9 4-9 4-9-4z"/><path class="ico" d="M3 7v10l9 4 9-4V7"/><path class="ico" d="M12 11v10"/></svg>
+{%- elif name == 'trend' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M3 17l6-6 4 4 8-8"/><path class="ico" d="M14 7h7v7"/></svg>
+{%- elif name == 'building' -%}
+<svg viewBox="0 0 24 24" class="{{ css_class }}"><path class="ico" d="M4 21V5h10v16M14 21V11h6v10"/><path class="ico" d="M7 9h4M7 13h4M7 17h4M16 14h2M16 17h2"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro sparkle(size=14, color='currentColor') -%}
+<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" style="display:block">
+  <path d="M12 2 L13.5 10.5 L22 12 L13.5 13.5 L12 22 L10.5 13.5 L2 12 L10.5 10.5 Z" fill="{{ color }}"/>
+</svg>
+{%- endmacro %}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Financiaciones · Piccolina{% endblock %}
+
+{% block content %}
+  <section class="pt-12 pb-8">
+    <div class="flex items-end justify-between flex-wrap gap-4">
+      <div>
+        <div class="smcaps mb-2" style="color: var(--brand);">· FINANCIACIONES ·</div>
+        <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Planes activos</h1>
+        <p class="thin mt-3 text-[15px]" style="color: var(--ink-2);">
+          Acá viven los planes de pago de AFIP y cualquier otra financiación. Cuando creás un plan,
+          el sistema genera sus cuotas como vencimientos en categoría <em>Financiaciones</em>
+          y podés vincular los vencimientos viejos que el plan cubre.
+        </p>
+      </div>
+      <button class="btn btn-primary" type="button"
+              onclick="document.getElementById('modal-plan').style.display='grid'">
+        + Nuevo plan
+      </button>
+    </div>
+  </section>
+
+  {% if not data %}
+    <p style="color: var(--ink-3);">No hay planes cargados todavía.</p>
+  {% endif %}
+
+  {% if data %}
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Plan</th>
+          <th>Fuente</th>
+          <th>Progreso</th>
+          <th>Cuota mensual</th>
+          <th>Total calculado</th>
+          <th>Impagas</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in data %}
+          <tr>
+            <td>
+              <a href="{{ url_for('planes.detalle', pid=d.plan.id) }}"
+                 style="color: var(--brand); text-decoration: none; font-weight: 500;">
+                {{ d.plan.nombre }}
+              </a>
+            </td>
+            <td style="color: var(--ink-2);">{{ d.plan.fuente }}</td>
+            <td><span class="num">{{ d.cuotas_pagas }}/{{ d.plan.cuotas_totales }}</span></td>
+            <td class="num">{{ d.plan.monto_cuota | money }}</td>
+            <td class="num">{{ d.total_calculado | money }}</td>
+            <td>
+              {% if d.cuotas_impagas_vencidas > 0 %}
+                <span class="sem sem-rojo">{{ d.cuotas_impagas_vencidas }}</span>
+              {% else %}
+                <span style="color: var(--ink-3);">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="tag-pill" style="background: var(--brand-soft); color: var(--brand);">
+                {{ d.plan.estado }}
+              </span>
+            </td>
+            <td>
+              <a class="btn-link" href="{{ url_for('planes.detalle', pid=d.plan.id) }}">Ver →</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {# ── Modal: nuevo plan ───────────────────────────────────────────────── #}
+  <div id="modal-plan" class="modal-overlay" style="display: none;">
+    <div class="modal">
+      <h2 class="huge mb-4" style="font-size: 24px;">Nueva financiación</h2>
+      <form method="post" action="{{ url_for('planes.nuevo') }}">
+        <label>Nombre del plan</label>
+        <input class="input-box" name="nombre" type="text" placeholder="ej: Plan AFIP IVA 2025" required>
+
+        <label>Fuente</label>
+        <select class="input-box" name="fuente">
+          {% for f in fuentes %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+        </select>
+
+        <label>Monto por cuota</label>
+        <input class="input-box" name="monto_cuota" type="number" step="0.01" required>
+
+        <label>Cantidad de cuotas</label>
+        <input class="input-box" name="cuotas_totales" type="number" min="1" required>
+
+        <label>Día del mes</label>
+        <input class="input-box" name="dia_del_mes" type="number" min="1" max="31" required>
+
+        <label>Fecha de la primera cuota</label>
+        <input class="input-box" name="fecha_primera_cuota" type="date" required>
+
+        <label>Obligaciones cubiertas (texto libre, opcional)</label>
+        <textarea class="input-box" name="obligaciones_cubiertas" rows="2"
+                  placeholder="ej: IVA marzo y abril 2025 + Aportes SS mayo y junio"></textarea>
+
+        <label>Notas</label>
+        <textarea class="input-box" name="notas" rows="2"></textarea>
+
+        {# ── Tildar qué vencimientos cubre este plan ──────────────────── #}
+        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule);">
+          <label style="color: var(--brand); margin-bottom: 8px;">
+            Vencimientos que paga este plan (opcional)
+          </label>
+          <p class="text-[11px] mb-3" style="color: var(--ink-3);">
+            Al tildar un vencimiento, queda absorbido por el plan: NO aparece más en
+            "pendientes" porque el plan lo paga via las cuotas.
+          </p>
+          {% if disponibles %}
+            <div style="max-height: 240px; overflow-y: auto; border: 1px solid var(--rule); border-radius: 6px; padding: 6px 10px;">
+              {% set ns = namespace(cat_actual='') %}
+              {% for v in disponibles %}
+                {% if v.categoria != ns.cat_actual %}
+                  {% set ns.cat_actual = v.categoria %}
+                  <div class="smcaps" style="margin: 8px 0 4px; color: var(--ink-3); font-size: 10px;">
+                    {{ v.categoria | label_categoria }}
+                  </div>
+                {% endif %}
+                <label class="flex items-center gap-2 py-1"
+                       style="text-transform: none; font-size: 13px; color: var(--ink-2); margin: 0;">
+                  <input type="checkbox" name="vencimiento_cubierto" value="{{ v.id }}">
+                  <span class="flex-1">
+                    {{ v.concepto }}
+                    <span style="color: var(--ink-3); font-size: 11px;">
+                      · {{ v.fecha_vencimiento | fecha }} · {{ v.monto | money }}
+                    </span>
+                  </span>
+                </label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-[12px]" style="color: var(--ink-3);">
+              No hay vencimientos pendientes para vincular. Podés vincularlos después
+              desde el detalle del plan.
+            </p>
+          {% endif %}
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button"
+                  onclick="document.getElementById('modal-plan').style.display='none'">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Crear plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+{% endblock %}

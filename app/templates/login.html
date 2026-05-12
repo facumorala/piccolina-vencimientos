@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión · Vencimientos Piccolina{% endblock %}
+
+{# Login: ocultamos el nav pero mantenemos el brand strip + footer #}
+{% block shell_header %}{% endblock %}
+
+{% block content %}
+  <section class="pt-16 md:pt-24 flex justify-center">
+    <div class="w-full" style="max-width: 380px;">
+      <div class="text-center mb-8">
+        <img src="{{ url_for('identidad.static', filename='logos/logo_vencimientos.png') }}"
+             alt="Vencimientos" class="h-10 w-auto mx-auto mb-4">
+        <h1 class="huge mb-1" style="font-size: 36px;">Vencimientos</h1>
+        <p class="thin text-[14px]" style="color: var(--ink-2);">Piccolina · Iniciar sesión</p>
+      </div>
+
+      <div class="bg-white rounded-lg p-7" style="border: 1px solid var(--rule);">
+        <form method="post" action="{{ url_for('auth.login') }}" class="space-y-4">
+          <div>
+            <label class="smcaps block mb-1.5" style="color: var(--ink-2); font-size: 11px;">
+              Usuario
+            </label>
+            <input id="username" name="username" type="text" required autofocus autocomplete="username"
+                   class="input w-full">
+          </div>
+          <div>
+            <label class="smcaps block mb-1.5" style="color: var(--ink-2); font-size: 11px;">
+              Contraseña
+            </label>
+            <input id="password" name="password" type="password" required autocomplete="current-password"
+                   class="input w-full">
+          </div>
+          <button class="btn-primary w-full mt-3" type="submit"
+                  style="background: var(--ink); color: var(--peach); padding: 11px;
+                         border-radius: 8px; font-weight: 600; font-size: 14px; border: 0;
+                         cursor: pointer;">
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+{% endblock %}

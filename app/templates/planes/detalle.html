@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.nombre }} · Vencimientos Piccolina{% endblock %}
+
+{% block content %}
+  <section class="pt-12 pb-6">
+    <div class="flex items-end justify-between flex-wrap gap-4">
+      <div>
+        <div class="smcaps mb-2" style="color: var(--brand);">· FINANCIACIÓN · {{ plan.fuente }} · {{ plan.estado | upper }} ·</div>
+        <h1 class="huge" style="font-size: clamp(28px, 3.8vw, 44px);">{{ plan.nombre }}</h1>
+      </div>
+      <a class="btn btn-ghost" href="{{ url_for('planes.list_view') }}">← Volver</a>
+    </div>
+  </section>
+
+  {# ── KPIs del plan ───────────────────────────────────────────────────── #}
+  {% set kpis = [
+    {'eyebrow': 'CUOTA MENSUAL', 'value_html': plan.monto_cuota | money},
+    {'eyebrow': 'CUOTAS TOTALES', 'value_html': plan.cuotas_totales | string},
+    {'eyebrow': 'DÍA DEL MES', 'value_html': plan.dia_del_mes | string},
+    {'eyebrow': 'PRIMERA CUOTA', 'value_html': plan.fecha_primera_cuota | fecha},
+  ] %}
+  {% include 'identidad/_kpi_strip.html' %}
+
+  {% if plan.obligaciones_cubiertas %}
+    <section class="pt-8">
+      <div class="card">
+        <div class="smcaps mb-3">· OBLIGACIONES QUE CUBRE ·</div>
+        <p style="color: var(--ink-2); font-size: 14px;">{{ plan.obligaciones_cubiertas }}</p>
+      </div>
+    </section>
+  {% endif %}
+
+  {# ── Cuotas ──────────────────────────────────────────────────────────── #}
+  <section class="pt-10">
+    <div class="smcaps mb-3" style="color: var(--brand);">· CUOTAS ·</div>
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Fecha</th>
+          <th>Estado</th>
+          <th>F. Pago</th>
+          <th style="text-align: right;">Importe</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cuotas %}
+          {% set sem = c.fecha_vencimiento | semaforo(c.pagado) %}
+          <tr class="row-{{ sem }}">
+            <td><strong>{{ c.plan_cuota_nro }}/{{ plan.cuotas_totales }}</strong></td>
+            <td class="num">{{ c.fecha_vencimiento | fecha }}</td>
+            <td>
+              <span class="sem sem-{{ sem }}">
+                {{ c.fecha_vencimiento | label_estado(c.pagado) }}
+              </span>
+            </td>
+            <td class="num" style="color: var(--ink-2);">{{ c.fecha_pago | fecha }}</td>
+            <td class="num" style="text-align: right;">{{ c.monto | money }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {# ── Vencimientos cubiertos ──────────────────────────────────────────── #}
+  <section class="pt-10">
+    <div class="smcaps mb-3" style="color: var(--brand);">· VENCIMIENTOS QUE CUBRE ·</div>
+    {% if cubiertos %}
+      <table class="tbl">
+        <thead>
+          <tr><th>Concepto</th><th>Categoría</th><th>F. Vto original</th><th style="text-align: right;">Importe</th></tr>
+        </thead>
+        <tbody>
+          {% for v in cubiertos %}
+            <tr class="row-en_plan">
+              <td>{{ v.concepto }}</td>
+              <td style="color: var(--ink-2);">{{ v.categoria | label_categoria }}</td>
+              <td class="num">{{ v.fecha_vencimiento | fecha }}</td>
+              <td class="num" style="text-align: right;">{{ v.monto | money }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="color: var(--ink-3);">Ningún vencimiento vinculado todavía.</p>
+    {% endif %}
+  </section>
+
+  {# ── Vincular más ─────────────────────────────────────────────────── #}
+  {% if disponibles %}
+    <section class="pt-10">
+      <div class="smcaps mb-3" style="color: var(--brand);">· SUMAR VENCIMIENTOS A ESTE PLAN ·</div>
+      <form method="post" action="{{ url_for('planes.vincular_vencimientos', pid=plan.id) }}">
+        <div class="card">
+          {% for v in disponibles %}
+            <label class="flex items-start gap-3 py-2 border-b"
+                   style="border-color: var(--rule-2);">
+              <input type="checkbox" name="vencimiento_id" value="{{ v.id }}" class="mt-1">
+              <span class="flex-1">
+                <div style="font-weight: 500;">{{ v.concepto }}</div>
+                <div class="text-[12px]" style="color: var(--ink-3);">
+                  {{ v.categoria | label_categoria }} · {{ v.fecha_vencimiento | fecha }} · {{ v.monto | money }}
+                </div>
+              </span>
+            </label>
+          {% endfor %}
+          <button class="btn btn-primary mt-4" type="submit">Vincular seleccionados</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+
+{% endblock %}

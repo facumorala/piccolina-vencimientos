@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Inicio · Vencimientos Piccolina{% endblock %}
+
+{% set MESES = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'] %}
+{% set mes_actual = MESES[hoy.month] | upper %}
+
+{% block content %}
+  {# ── Page Header: kicker + saludo grande + sub con contador ─────────── #}
+  {% set _saludo = 'Buen día' if hora_actual < 13 else ('Buenas tardes' if hora_actual < 20 else 'Buenas noches') %}
+  {% set kicker = 'VENCIMIENTOS · ' ~ mes_actual ~ ' ' ~ hoy.year %}
+  {% set title_html = _saludo ~ ', <span style="color: var(--brand);">' ~ user_name ~ '</span><span style="color: var(--brand); font-weight: 400;">.</span>' %}
+  {% set subtitle = 'Pendiente este mes: <strong>' ~ (total_mes_pendiente | money) ~ '</strong> de un total de <strong>' ~ (total_mes_bruto | money) ~ '</strong>. Mes anterior, lo debido fue ' ~ (total_mes_anterior | money) ~ '.' %}
+  {% include 'identidad/_page_header.html' %}
+
+  {# ── KPI strip: 4 KPIs clickeables ──────────────────────────────────── #}
+  {% set kpis = [
+    {'eyebrow': 'PENDIENTE', 'value_html': pendiente_total | money, 'hint': 'sin pagar', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
+    {'eyebrow': 'VENCIDO',   'value_html': '<span style="color: #8B1B1B;">' ~ (vencido_total | money) ~ '</span>', 'hint': 'pago atrasado', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
+    {'eyebrow': 'ESTA SEMANA', 'value_html': esta_semana | money, 'hint': 'próximos 7 días', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
+    {'eyebrow': 'DATOS POR COMPLETAR', 'value_html': datos_faltantes_total | string, 'hint': 'estimados o faltantes', 'href': url_for('vencimientos.list_view', estimado='si')},
+  ] %}
+  {% include 'identidad/_kpi_strip.html' %}
+
+  {# ── Intereses por pagar fuera de término ──────────────────────────── #}
+  {% if intereses_pendientes and intereses_pendientes > 0 %}
+    <section class="space-y-3">
+      <h2 class="smcaps" style="color: #B85C00;">· ⚠ LO QUE ESTÁS PERDIENDO POR PAGAR TARDE ·</h2>
+      <div style="background: #FFF6E5; border: 1px solid #FFCC80; border-radius: 10px;
+                  padding: 18px 22px; display: flex; justify-content: space-between;
+                  align-items: center; flex-wrap: wrap; gap: 16px;">
+        <div>
+          <div class="smcaps" style="color: #B85C00; font-size: 11px;">INTERESES ACUMULADOS</div>
+          <div style="font-size: 32px; font-weight: 700; color: #8B4500; margin-top: 4px;">
+            {{ intereses_pendientes | money }}
+          </div>
+          <div class="text-[12px] mt-1" style="color: var(--ink-3);">
+            sobre {{ vencimientos_con_intereses | length }} vencimiento{{ 's' if vencimientos_con_intereses|length != 1 else '' }} fuera de término
+          </div>
+        </div>
+        <a class="btn btn-primary" href="{{ url_for('vencimientos.list_view', estado='no_pagado') }}">
+          Ver detalle →
+        </a>
+      </div>
+      {% if vencimientos_con_intereses %}
+        <table class="lista">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th>Vencimiento</th>
+              <th style="text-align: right;">Importe original</th>
+              <th style="text-align: right;">Intereses</th>
+              <th style="text-align: right;">Total a pagar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in vencimientos_con_intereses %}
+              <tr>
+                <td data-label="Concepto">{{ v.concepto }}</td>
+                <td data-label="Vencimiento">{{ v.fecha_vencimiento | fecha }}</td>
+                <td data-label="Importe original" style="text-align: right;">{{ v.monto | money }}</td>
+                <td data-label="Intereses" style="text-align: right; color: #B85C00; font-weight: 600;">
+                  + {{ v.monto_intereses | money }}
+                </td>
+                <td data-label="Total" style="text-align: right; font-weight: 700;">
+                  {{ ((v.monto or 0) + v.monto_intereses) | money }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {# ── 3 más vencidos ─────────────────────────────────────────────────── #}
+  {% if mas_vencidos %}
+    <section class="space-y-3">
+      <h2 class="smcaps" style="color: #8B1B1B;">· 3 PAGOS MÁS VENCIDOS ·</h2>
+      <table class="lista">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Categoría</th>
+            <th>Vencimiento</th>
+            <th>Atraso</th>
+            <th style="text-align: right;">Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in mas_vencidos %}
+            <tr>
+              <td data-label="Concepto">{{ v.concepto }}</td>
+              <td data-label="Categoría">{{ v.categoria | label_categoria }}</td>
+              <td data-label="Vencimiento">{{ v.fecha_vencimiento | fecha }}</td>
+              <td data-label="Atraso"><span class="sem sem-rojo">{{ v.fecha_vencimiento | label_estado }}</span></td>
+              <td data-label="Importe" style="text-align: right;">
+                {{ v.monto | money }}
+                {% if v.monto_estimado %}<span class="tag-estimado">estimado</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  {# ── Financiaciones ─────────────────────────────────────────────────── #}
+  {% if planes_data %}
+    <section class="space-y-3">
+      <h2 class="smcaps" style="color: var(--brand);">· FINANCIACIONES ACTIVAS ·</h2>
+      <table class="lista">
+        <thead>
+          <tr>
+            <th>Plan</th>
+            <th>Progreso</th>
+            <th>Cuota mensual</th>
+            <th>Restante</th>
+            <th>Cuotas impagas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in planes_data %}
+            <tr>
+              <td data-label="Plan">
+                <a href="{{ url_for('planes.detalle', pid=d.plan.id) }}"
+                   style="color: var(--brand); text-decoration: none;">
+                  {{ d.plan.nombre }}
+                </a>
+              </td>
+              <td data-label="Progreso">{{ d.cuotas_pagas }}/{{ d.cuotas_totales }}</td>
+              <td data-label="Cuota">{{ d.plan.monto_cuota | money }}</td>
+              <td data-label="Restante">{{ d.monto_restante | money }}</td>
+              <td data-label="Impagas">
+                {% if d.cuotas_impagas_vencidas > 0 %}
+                  <span class="sem sem-rojo">{{ d.cuotas_impagas_vencidas }}</span>
+                {% else %}
+                  <span style="color: var(--ink-3, #888);">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  {# ── Datos por completar ────────────────────────────────────────────── #}
+  {% if datos_faltantes %}
+    <section class="space-y-3">
+      <h2 class="smcaps" style="color: #B85C00;">· ⚠ DATOS POR COMPLETAR ({{ datos_faltantes_total }}) ·</h2>
+      <table class="lista">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Categoría</th>
+            <th>Falta</th>
+            <th style="text-align: right;">Importe (si hay)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in datos_faltantes %}
+            <tr>
+              <td data-label="Concepto">{{ v.concepto }}</td>
+              <td data-label="Categoría">{{ v.categoria | label_categoria }}</td>
+              <td data-label="Falta">
+                {% if v.monto is none and v.fecha_vencimiento is none %}
+                  <span class="tag-falta">FALTA monto y fecha</span>
+                {% elif v.monto is none %}
+                  <span class="tag-falta">FALTA monto</span>
+                {% elif v.fecha_vencimiento is none %}
+                  <span class="tag-falta">FALTA fecha</span>
+                {% elif v.monto_estimado and v.fecha_estimada %}
+                  <span class="tag-falta">monto y fecha estimados</span>
+                {% elif v.monto_estimado %}
+                  <span class="tag-falta">monto estimado</span>
+                {% elif v.fecha_estimada %}
+                  <span class="tag-falta">fecha estimada</span>
+                {% endif %}
+              </td>
+              <td data-label="Importe" style="text-align: right;">{{ v.monto | money }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div>
+        <a class="btn-link" href="{{ url_for('vencimientos.list_view', estimado='si') }}">
+          Ver todos →
+        </a>
+      </div>
+    </section>
+  {% endif %}
+
+{% endblock %}

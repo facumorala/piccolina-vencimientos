@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ f.titulo or f.tipo }} · Manual · Piccolina{% endblock %}
+
+{% block content %}
+  {# ── Page header ─────────────────────────────────────────────────────── #}
+  <section class="pt-10 pb-4">
+    <div class="flex items-center gap-3 text-[12px] mb-4">
+      <a href="{{ url_for('fichas.list_view') }}"
+         style="color: var(--ink-3); text-decoration: none;">← Manual</a>
+      <span style="color: var(--ink-3);">·</span>
+      <span class="smcaps" style="color: var(--brand);">{{ f.categoria | label_categoria }}</span>
+    </div>
+    <div class="flex items-start justify-between flex-wrap gap-4">
+      <div>
+        <h1 class="huge" style="font-size: clamp(28px, 3.5vw, 42px);">{{ f.titulo or f.tipo }}</h1>
+        {% if f.titulo and f.titulo != f.tipo %}
+          <p class="thin mt-2" style="color: var(--ink-2);">Tipo: {{ f.tipo }}</p>
+        {% endif %}
+      </div>
+      <a href="{{ url_for('fichas.editar', tipo=f.tipo) }}" class="btn btn-primary">
+        Editar ficha
+      </a>
+    </div>
+  </section>
+
+  {# ── Casilleros ──────────────────────────────────────────────────────── #}
+  <section class="pb-12">
+    {% set bloques = [
+      ('¿Qué es?', f.que_es),
+      ('¿De dónde se saca?', f.de_donde_se_saca),
+      ('¿Cuándo aparece?', f.cuando_aparece),
+      ('¿Cómo se paga?', f.como_se_paga),
+      ('Contactos', f.contactos),
+      ('Notas', f.notas),
+    ] %}
+
+    {% set tiene_algo = false %}
+    {% for label, val in bloques %}
+      {% if val %}{% set tiene_algo = true %}{% endif %}
+    {% endfor %}
+
+    {% if not tiene_algo %}
+      <div class="text-center py-12" style="color: var(--ink-3);">
+        <p class="mb-4">Esta ficha está vacía.</p>
+        <a href="{{ url_for('fichas.editar', tipo=f.tipo) }}" class="btn btn-primary">
+          Empezar a cargar
+        </a>
+      </div>
+    {% endif %}
+
+    {% for label, val in bloques %}
+      {% if val %}
+        <div class="ficha-bloque" style="margin-top: 24px; padding: 18px 20px;
+                                          background: white; border: 1px solid var(--rule);
+                                          border-radius: 8px;">
+          <div class="smcaps mb-2" style="color: var(--brand); font-size: 11px;">{{ label }}</div>
+          <div style="white-space: pre-wrap; line-height: 1.55; color: var(--ink);">{{ val }}</div>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    <div class="text-[11px] mt-6" style="color: var(--ink-3);">
+      Última actualización: {{ f.actualizado_en | fecha }}
+      {% if f.actualizado_por %} · {{ f.actualizado_por.name }}{% endif %}
+    </div>
+  </section>
+{% endblock %}

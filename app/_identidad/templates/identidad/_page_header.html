@@ -1,0 +1,40 @@
+{#
+  PageHeader: kicker + h1 huge + subtitle opcional + actions opcionales.
+
+  Vars:
+    - kicker        : str opcional — eyebrow en bordó (ej: 'COMPRAS · ABRIL 2026')
+    - title_html    : str — título principal (puede ser HTML, ej: 'Buenas tardes, <span>Facu</span>.')
+                       En su forma mínima es solo texto plano.
+    - subtitle      : str opcional — descripción debajo del título
+    - actions       : str opcional — HTML de los botones de la derecha
+
+  Para el "punto bordó" final del título (recomendado por el manual):
+    pasar title_html con `<span style="color:var(--plum); font-weight:400;">.</span>`
+
+  Esta es solo presentación visual. Los datos ya vienen renderizados a HTML
+  desde el blueprint (no se procesa lógica acá).
+#}
+{% from 'identidad/_icons.html' import sparkle %}
+{% set _hide_sparkle = hide_sparkle if hide_sparkle is defined else False %}
+
+<section class="pt-12 pb-8 relative">
+  {% if not _hide_sparkle %}
+  <div class="sparkle" style="top: 18px; right: 24px; color: var(--plum); width: 12px; height: 12px; opacity: .85;">
+    {{ sparkle(12, 'var(--plum)') }}
+  </div>
+  {% endif %}
+  {% if kicker %}
+  <div class="smcaps mb-3" style="color: var(--plum);">· {{ kicker }} ·</div>
+  {% endif %}
+  <div class="flex items-end justify-between flex-wrap gap-4">
+    <div>
+      <h1 class="huge" style="font-size: clamp(40px, 5.5vw, 72px);">{{ title_html | safe }}</h1>
+      {% if subtitle %}
+      <p class="thin mt-3 text-[15px] max-w-xl" style="color: var(--ink-2);">{{ subtitle }}</p>
+      {% endif %}
+    </div>
+    {% if actions %}
+    <div class="flex items-center gap-2">{{ actions | safe }}</div>
+    {% endif %}
+  </div>
+</section>

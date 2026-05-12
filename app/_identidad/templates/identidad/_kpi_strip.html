@@ -1,0 +1,59 @@
+{#
+  KPIStrip: 4 KPIs en línea, sin recuadros — separados por bordes verticales.
+  Borde superior fuerte de 1px en var(--ink). Patrón estándar de todas las páginas.
+
+  Vars:
+    - kpis : list[dict] con keys:
+        eyebrow      (str, requerido) — label arriba en .smcaps
+        value_html   (str, requerido) — número grande (puede ser HTML para colorear)
+        hint         (str, opcional)  — línea de detalle gris debajo
+        href         (str, opcional)  — si está, el tile se vuelve clickeable
+
+  Ejemplo de uso desde un template padre:
+    {% set kpis = [
+       {'eyebrow': 'PROVEEDORES', 'value_html': '42',     'hint': 'activos hoy'},
+       {'eyebrow': 'COMPRAS MES',  'value_html': '$4,82M', 'hint': '+12% vs marzo',
+        'href': url_for('compras.list_view')},
+    ] %}
+    {% include 'identidad/_kpi_strip.html' %}
+
+  Layout:
+    - 4 cols en md+, 2x2 en mobile.
+    - Padding superior 16px, separadores derecho con --rule en md+.
+#}
+{% set _kpis = kpis | default([]) %}
+
+<section class="grid grid-cols-2 md:grid-cols-4 border-t pt-4"
+         style="border-color: var(--ink);">
+  {% for k in _kpis %}
+    {% if k.href %}
+    <a href="{{ k.href }}"
+       class="px-4 first:pl-0 md:border-r md:last:border-r-0 kpi-tile-link"
+       style="border-color: var(--rule); text-decoration: none; color: inherit; cursor: pointer;">
+      <div class="smcaps mb-2">{{ k.eyebrow }}</div>
+      <div class="stat-num" style="font-size: clamp(28px, 3.6vw, 44px);">
+        {{ k.value_html | safe }}
+      </div>
+      {% if k.hint %}
+      <div class="text-[12px] mt-1" style="color: var(--ink-3);">{{ k.hint }}</div>
+      {% endif %}
+    </a>
+    {% else %}
+    <div class="px-4 first:pl-0 md:border-r md:last:border-r-0"
+         style="border-color: var(--rule);">
+      <div class="smcaps mb-2">{{ k.eyebrow }}</div>
+      <div class="stat-num" style="font-size: clamp(28px, 3.6vw, 44px);">
+        {{ k.value_html | safe }}
+      </div>
+      {% if k.hint %}
+      <div class="text-[12px] mt-1" style="color: var(--ink-3);">{{ k.hint }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endfor %}
+</section>
+
+<style>
+  .kpi-tile-link { display: block; transition: background 120ms ease; }
+  .kpi-tile-link:hover { background: rgba(30,28,29,0.025); }
+</style>

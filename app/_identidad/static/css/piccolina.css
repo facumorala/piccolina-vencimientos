@@ -1,0 +1,261 @@
+/* ============================================================
+   Piccolina · Sistema visual compartido
+   Manual de Identidad — Persian Plum / Seashell Peach / Vulcan Black
+   ============================================================ */
+
+@font-face { font-family: 'Sunset Gothic Pro'; src: url('../fonts/SunsetGothicPro-Light.ttf')  format('truetype'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Sunset Gothic Pro'; src: url('../fonts/SunsetGothicPro.ttf')        format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Sunset Gothic Pro'; src: url('../fonts/SunsetGothicPro-Italic.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Sunset Gothic Pro'; src: url('../fonts/SunsetGothicPro-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Sunset Gothic Pro'; src: url('../fonts/SunsetGothicPro-Bold.ttf')   format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Sunset Gothic Pro'; src: url('../fonts/SunsetGothicPro-Heavy.ttf')  format('truetype'); font-weight: 900; font-style: normal; font-display: swap; }
+
+:root {
+  /* Paleta principal — manual oficial */
+  --plum:        #990B1A;   /* Persian Plum */
+  --peach:       #FDF8EF;   /* Seashell Peach */
+  --vulcan:      #1E1C1D;   /* Vulcan Black */
+
+  /* Complementaria — uso muy puntual */
+  --helecho:     #005402;
+  --corn:        #FFEA8B;
+  --water:       #9ADCD3;
+  --rum:         #B68000;
+
+  /* Tokens UI */
+  --bg:          #ffffff;
+  --bg-warm:     #FDF8EF;
+  --ink:         #1E1C1D;
+  --ink-2:       #4a4647;
+  --ink-3:       #8a8587;
+  --plum-2:      #b32230;
+  --plum-soft:   #f9e8ea;
+  --rule:        rgba(30,28,29,0.10);
+  --rule-2:      rgba(30,28,29,0.06);
+  --ok:          #005402;
+  --warn:        #B68000;
+
+  /* Radii / shadow / spacing */
+  --r-sm:  6px;
+  --r-md:  10px;
+  --r-lg:  14px;
+  --r-xl:  20px;
+  --r-pill: 999px;
+}
+
+html, body {
+  font-family: 'Sunset Gothic Pro', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: var(--bg);
+  color: var(--ink);
+  letter-spacing: -0.005em;
+}
+
+/* ============ Tipografía utilitaria ============ */
+.tabular    { font-variant-numeric: tabular-nums; }
+.smcaps     { letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; font-size: 11px; color: var(--ink-3); }
+.smcaps-ink { letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; font-size: 11px; }
+.thin       { font-weight: 300; letter-spacing: -0.01em; }
+.huge       { font-weight: 300; letter-spacing: -0.025em; line-height: 1; }
+.display    { font-weight: 400; letter-spacing: -0.02em; line-height: 1.05; }
+.num        { font-variant-numeric: tabular-nums; font-weight: 300; letter-spacing: -0.02em; }
+.stat-num   { font-weight: 300; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+
+/* ============ Reglas / cards ============ */
+.rule        { height: 1px; background: var(--rule); }
+.rule-strong { height: 1px; background: var(--ink); opacity: .9; }
+.card {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  background: #fff;
+  transition: border-color .2s ease;
+}
+.card:hover { border-color: rgba(30,28,29,0.16); }
+
+/* ============ Chips de estado ============ */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500;
+}
+.chip-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+
+/* ============ Botones ============ */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--r-pill);
+  font-weight: 500; font-size: 13px;
+  transition: transform .15s ease, background .15s ease, color .15s ease, border-color .15s ease;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.btn:hover    { transform: translateY(-1px); }
+.btn-primary  { background: var(--ink); color: #fff; }
+.btn-primary:hover { background: var(--plum); }
+.btn-ghost    { background: transparent; color: var(--ink); border-color: var(--rule); }
+.btn-ghost:hover { background: rgba(30,28,29,0.04); }
+.btn-plum     { background: var(--plum); color: var(--peach); }
+.btn-plum:hover { background: var(--plum-2); }
+.btn-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--plum); cursor: pointer;
+}
+.btn-link:hover { gap: 10px; }
+
+/* ============ Tabla ============ */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl thead th {
+  text-align: left; font-weight: 500; font-size: 10px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  padding: 10px 0; color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+}
+.tbl tbody td {
+  padding: 14px 0; border-bottom: 1px solid var(--rule-2);
+  vertical-align: middle; font-size: 14px;
+}
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl tbody tr { transition: background .15s ease; }
+.tbl tbody tr:hover { background: rgba(30,28,29,0.015); }
+
+/* ============ Row item (ticket-style) ============ */
+.row-item {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 16px;
+  padding: 16px 0; border-bottom: 1px solid var(--rule-2);
+  align-items: center;
+}
+.row-item:last-child { border-bottom: none; }
+.row-item .day {
+  width: 56px; height: 56px; display: grid; place-items: center;
+  border: 1px solid var(--rule); border-radius: var(--r-sm);
+  text-align: center;
+}
+
+/* ============ Input ============ */
+.input {
+  background: transparent; border: 0;
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 0 6px 26px;
+  font-size: 13px; width: 240px;
+  transition: border-color .2s ease;
+  font-family: inherit; color: inherit;
+}
+.input:focus { outline: none; border-bottom-color: var(--ink); }
+.input-box {
+  background: #fff; border: 1px solid var(--rule); border-radius: var(--r-md);
+  padding: 9px 12px; font-size: 13px; width: 100%;
+  transition: border-color .2s ease;
+  font-family: inherit; color: inherit;
+}
+.input-box:focus { outline: none; border-color: var(--ink); }
+
+/* ============ Iconos ============ */
+.ico {
+  stroke: currentColor; fill: none;
+  stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ============ Sparkle (recurso oficial) ============ */
+.sparkle { position: absolute; pointer-events: none; opacity: .9; }
+.sparkle svg { width: 100%; height: 100%; }
+
+/* ============ Franja superior ============ */
+.brand-strip {
+  background: var(--plum);
+  color: var(--peach);
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.brand-strip-logo { height: 22px; width: auto; display: block; }
+
+/* ============ Nav ============ */
+.navlink {
+  position: relative;
+  font-size: 13px; font-weight: 500;
+  color: var(--ink-2);
+  padding: 6px 2px;
+  letter-spacing: -0.005em;
+  transition: color .15s ease;
+  text-decoration: none;
+}
+.navlink:hover { color: var(--ink); }
+.navlink.active { color: var(--ink); }
+.navlink.active::after {
+  content:''; position:absolute; left:0; right:0; bottom: -1px; height: 2px;
+  background: var(--plum);
+}
+
+/* ============ Avatar ============ */
+.avatar {
+  width: 30px; height: 30px; border-radius: 999px;
+  background: var(--plum-soft); color: var(--plum);
+  display:grid; place-items:center;
+  font-weight: 500; font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+/* ============ Pills / tags ============ */
+.tag-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
+  text-decoration: none;
+}
+
+/* ============ Bars ============ */
+.bars { display: flex; align-items: flex-end; gap: 4px; height: 64px; }
+.bars > div { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; background: rgba(30,28,29,0.12); }
+.bars > div.hi  { background: var(--plum); }
+.bars > div.med { background: var(--ink); opacity: .55; }
+
+/* ============ Patrón / textura ============ */
+.dot-pattern {
+  background-image: radial-gradient(circle, rgba(30,28,29,0.18) 0.8px, transparent 1.4px);
+  background-size: 14px 14px;
+}
+
+/* ============ Misc ============ */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+.fade-up { animation: fadeUp .5s ease-out both; }
+@keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: none; } }
+
+/* ============ Drawer de navegación mobile ============ */
+.nav-overlay {
+  position: fixed; inset: 0; z-index: 38;
+  background: rgba(30,28,29,0.4);
+  opacity: 0; pointer-events: none;
+  transition: opacity .25s ease;
+}
+.nav-overlay.is-open { opacity: 1; pointer-events: auto; }
+
+.nav-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 39;
+  width: min(280px, 80vw);
+  background: var(--bg);
+  border-left: 1px solid var(--rule);
+  transform: translateX(100%);
+  transition: transform .25s ease;
+  overflow-y: auto;
+}
+.nav-drawer.is-open { transform: translateX(0); }
+
+.nav-drawer-link {
+  display: block;
+  padding: 13px 12px 13px 11px;
+  font-size: 15px; font-weight: 500; letter-spacing: -0.005em;
+  color: var(--ink-2);
+  text-decoration: none;
+  border-radius: var(--r-sm);
+  border-left: 3px solid transparent;
+  transition: background .15s ease, color .15s ease;
+}
+.nav-drawer-link:hover { background: rgba(30,28,29,0.04); color: var(--ink); }
+.nav-drawer-link.active {
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-left-color: var(--brand);
+}

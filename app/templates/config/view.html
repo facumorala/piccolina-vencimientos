@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Configuración · Vencimientos Piccolina{% endblock %}
+
+{% block content %}
+  <section class="pt-12 pb-8">
+    <div class="smcaps mb-2" style="color: var(--brand);">· CONFIGURACIÓN ·</div>
+    <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Ajustes</h1>
+  </section>
+
+  {# ── Cambiar mi contraseña ───────────────────────────────────────────── #}
+  <section class="pb-10">
+    <div class="card">
+      <div class="smcaps mb-4">· CAMBIAR MI CONTRASEÑA ·</div>
+      <form method="post" action="{{ url_for('config.cambiar_password') }}" class="space-y-3"
+            style="max-width: 380px;">
+        <div>
+          <label class="smcaps block mb-1" style="font-size: 10px;">Contraseña actual</label>
+          <input class="input-box" type="password" name="password_actual" required>
+        </div>
+        <div>
+          <label class="smcaps block mb-1" style="font-size: 10px;">Nueva contraseña</label>
+          <input class="input-box" type="password" name="password_nueva" required>
+        </div>
+        <button class="btn btn-primary mt-3" type="submit">Guardar</button>
+      </form>
+    </div>
+  </section>
+
+  {# ── Contadoras (solo Facu) ──────────────────────────────────────────── #}
+  {% if user_rol == 'facu' %}
+    <section>
+      <div class="card">
+        <div class="smcaps mb-4" style="color: var(--brand);">· CONTADORAS (AGUS) ·</div>
+
+        {% if contadoras %}
+          <table class="tbl mb-6">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Activa</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in contadoras %}
+                <tr>
+                  <td><strong>{{ c.username }}</strong></td>
+                  <td>{{ c.name }}</td>
+                  <td style="color: var(--ink-2);">{{ c.email }}</td>
+                  <td>
+                    {% if c.active %}
+                      <span class="tag-pill" style="background: rgba(0,84,2,0.1); color: var(--ok);">Activa</span>
+                    {% else %}
+                      <span class="tag-pill" style="background: var(--rule); color: var(--ink-3);">Inactiva</span>
+                    {% endif %}
+                  </td>
+                  <td style="text-align: right;">
+                    {% if c.active %}
+                      <form method="post" action="{{ url_for('config.baja_contadora', uid=c.id) }}"
+                            style="display: inline;"
+                            onsubmit="return confirm('¿Dar de baja a {{ c.name }}?');">
+                        <button class="btn btn-plum" style="padding: 5px 12px; font-size: 11px;">Baja</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+
+        <div class="smcaps mb-3">· NUEVA CONTADORA ·</div>
+        <form method="post" action="{{ url_for('config.nueva_contadora') }}"
+              class="grid gap-3"
+              style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+          <input class="input-box" name="username" placeholder="username (ej: agus2)" required>
+          <input class="input-box" name="name" placeholder="Nombre completo" required>
+          <input class="input-box" name="email" type="email" placeholder="email" required>
+          <input class="input-box" name="password" type="text" placeholder="Contraseña inicial" required>
+          <button class="btn btn-primary" type="submit">Crear contadora</button>
+        </form>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}
