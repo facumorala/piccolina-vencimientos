@@ -201,9 +201,17 @@ Index("ix_log_actividad_notificado", LogActividad.notificado_telegram, LogActivi
 # ─── Factory de engine y session ──────────────────────────────────────────────
 
 def get_engine(database_url: str):
-    """Crea el engine SQLAlchemy. Normaliza postgres:// → postgresql:// (Railway)."""
+    """Crea el engine SQLAlchemy.
+
+    Normaliza la URL de Railway al driver psycopg v3 (compatible con Python 3.13):
+      - postgres://...        → postgresql+psycopg://...
+      - postgresql://...      → postgresql+psycopg://...
+    Cualquier otra URL (ej sqlite:///) se deja pasar tal cual.
+    """
     if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+        database_url = "postgresql+psycopg://" + database_url[len("postgres://"):]
+    elif database_url.startswith("postgresql://"):
+        database_url = "postgresql+psycopg://" + database_url[len("postgresql://"):]
     return create_engine(database_url, future=True, pool_pre_ping=True)
 
 
