@@ -30,7 +30,7 @@
     <div>
       <h1 class="huge" style="font-size: clamp(40px, 5.5vw, 72px);">{{ title_html | safe }}</h1>
       {% if subtitle %}
-      <p class="thin mt-3 text-[15px] max-w-xl" style="color: var(--ink-2);">{{ subtitle }}</p>
+      <p class="thin mt-3 text-[15px] max-w-xl" style="color: var(--ink-2);">{{ subtitle | safe }}</p>
       {% endif %}
     </div>
     {% if actions %}
