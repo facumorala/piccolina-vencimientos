@@ -20,6 +20,7 @@ Reglas:
 Ver `routes/vencimientos.py::nuevo()` para el disparo al crear y
 `services/scheduler.py` para el salvavidas mensual.
 """
+import re
 from calendar import monthrange
 from datetime import date
 
@@ -31,6 +32,30 @@ HORIZONTE_MESES = 12
 
 MESES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+# Para parsear períodos como "marzo 2026", "MARZO 2026", "marzo de 2026".
+_MES_A_NUM = {nombre: i for i, nombre in enumerate(MESES_ES) if nombre}
+_RE_PERIODO_SIMPLE = re.compile(
+    r"^\s*(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)"
+    r"(?:\s+de)?\s+(\d{4})\s*$",
+    re.IGNORECASE,
+)
+
+
+def _parsear_periodo_simple(texto: str | None) -> date | None:
+    """
+    Devuelve `date(año, mes, 1)` si el texto es un período simple tipo
+    "marzo 2026", "MARZO 2026" o "marzo de 2026". Devuelve None si es
+    bimestral ("mar-abr 2026"), anual ("2025") o cualquier otra cosa.
+    """
+    if not texto:
+        return None
+    m = _RE_PERIODO_SIMPLE.match(texto)
+    if not m:
+        return None
+    mes = _MES_A_NUM[m.group(1).lower()]
+    anio = int(m.group(2))
+    return date(anio, mes, 1)
 
 
 def _sumar_meses(d: date, n: int) -> date:
@@ -67,13 +92,45 @@ def _existe_en_mes(db, categoria: str, tipo: str, mes: date) -> bool:
     return ya is not None
 
 
+def _calcular_periodo_copia(origen: Vencimiento, nueva_fecha: date) -> str | None:
+    """
+    Calcula el período facturado de una copia respetando el offset entre
+    `periodo_facturado` y `fecha_vencimiento` del origen.
+
+    Ejemplo EDENOR: origen período "marzo 2026" + vto 24/04/2026 →
+    offset = -1 mes. Copia con vto 24/06/2026 → período "mayo 2026".
+
+    Si el período del origen no es parseable (bimestral, anual, libre) o no
+    se puede calcular el offset, devuelve el mes del vencimiento como
+    fallback ("junio 2026").
+    """
+    fallback = f"{MESES_ES[nueva_fecha.month]} {nueva_fecha.year}"
+
+    if not origen.fecha_vencimiento:
+        return fallback
+
+    periodo_origen = _parsear_periodo_simple(origen.periodo_facturado)
+    if not periodo_origen:
+        return fallback
+
+    # Offset en meses entre periodo_origen y fecha_vencimiento del origen
+    vto_o = origen.fecha_vencimiento
+    offset = (periodo_origen.year - vto_o.year) * 12 + (periodo_origen.month - vto_o.month)
+
+    # Aplicar offset a la nueva_fecha
+    total_meses = nueva_fecha.month - 1 + offset
+    anio = nueva_fecha.year + total_meses // 12
+    mes = total_meses % 12 + 1
+    return f"{MESES_ES[mes]} {anio}"
+
+
 def _crear_copia(origen: Vencimiento, nueva_fecha: date) -> Vencimiento:
     """Crea una copia estimada de `origen` con la fecha indicada."""
-    nuevo_periodo = f"{MESES_ES[nueva_fecha.month]} {nueva_fecha.year}"
+    nuevo_periodo = _calcular_periodo_copia(origen, nueva_fecha)
     return Vencimiento(
         categoria=origen.categoria,
         tipo=origen.tipo,
-        concepto=f"{origen.tipo} {nuevo_periodo}",
+        concepto=origen.tipo,
         periodo_facturado=nuevo_periodo,
         monto=origen.monto,
         monto_estimado=True,
