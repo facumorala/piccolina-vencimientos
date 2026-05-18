@@ -10,7 +10,6 @@ Jobs:
 Usa APScheduler con BackgroundScheduler en proceso (no requiere worker separado).
 """
 import os
-from datetime import timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -72,10 +71,10 @@ def start_scheduler():
 # ─── Jobs ─────────────────────────────────────────────────────────────────────
 
 def _job_generador_mensual():
-    """Día 1 de cada mes — genera los recurrentes del mes en curso."""
+    """Día 1 de cada mes — completa el horizonte rodante de 12 meses."""
     try:
-        from services.generador import generar_recurrentes_para_mes
-        n = generar_recurrentes_para_mes()
+        from services.generador import asegurar_horizonte_completo
+        n = asegurar_horizonte_completo()
         print(f"[scheduler] Generador mensual ejecutado: {n} vencimientos creados.", flush=True)
     except Exception as e:
         print(f"[scheduler] Error en generador_mensual: {e}", flush=True)

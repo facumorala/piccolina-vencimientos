@@ -3,7 +3,7 @@ Vencimientos: listado con filtros, agrupado por categoría/tipo,
 popovers PAGAR/EDITAR, modal de carga/edición.
 """
 from calendar import monthrange
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for
@@ -159,6 +159,22 @@ def list_view():
 
     hay_filtro_fecha = bool(rango_activo or periodo_activo)
 
+    # Banner global del MES EN CURSO: vencimientos no pagados con fecha o monto
+    # estimado. Independiente de los filtros del listado — siempre mira al mes
+    # actual. Sirve para que Facu el día 1 confirme los estimados del mes.
+    primer_dia = hoy.replace(day=1)
+    if primer_dia.month == 12:
+        fin_mes = primer_dia.replace(year=primer_dia.year + 1, month=1)
+    else:
+        fin_mes = primer_dia.replace(month=primer_dia.month + 1)
+    estimados_mes = db.query(Vencimiento).filter(
+        Vencimiento.pagado.is_(False),
+        Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
+        Vencimiento.fecha_vencimiento >= primer_dia,
+        Vencimiento.fecha_vencimiento < fin_mes,
+        (Vencimiento.monto_estimado.is_(True)) | (Vencimiento.fecha_estimada.is_(True)),
+    ).order_by(Vencimiento.fecha_vencimiento.asc()).all()
+
     return render_template(
         "vencimientos/list.html",
         agrupados=agrupados,
@@ -176,7 +192,14 @@ def list_view():
         hay_filtro_fecha=hay_filtro_fecha,
         categorias=CATEGORIAS,
         tipos_con_ficha=tipos_con_ficha,
+        estimados_mes=estimados_mes,
+        nombre_mes_actual=_NOMBRE_MES_ES[hoy.month],
+        anio_mes_actual=hoy.year,
     )
+
+
+_NOMBRE_MES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 
 # ─── Generador manual: crear los recurrentes del mes próximo ─────────────────
@@ -184,16 +207,14 @@ def list_view():
 @bp.route("/generar-mes-proximo", methods=["POST"])
 @login_required
 def generar_mes_proximo():
-    """Crea los vencimientos recurrentes del próximo mes desde el botón manual."""
-    from services.generador import generar_recurrentes_para_mes
-    hoy = today_ar()
-    if hoy.month == 12:
-        mes_destino = hoy.replace(year=hoy.year + 1, month=1, day=1)
-    else:
-        mes_destino = hoy.replace(month=hoy.month + 1, day=1)
+    """Completa el horizonte rodante de 12 meses (botón manual)."""
+    from services.generador import asegurar_horizonte_completo
     try:
-        n = generar_recurrentes_para_mes(mes_destino)
-        flash(f"Se crearon {n} vencimientos recurrentes para el próximo mes.", "success")
+        n = asegurar_horizonte_completo()
+        if n:
+            flash(f"Se crearon {n} vencimientos estimados para completar 12 meses adelante.", "success")
+        else:
+            flash("Todos los recurrentes ya tienen sus 12 meses cargados.", "success")
     except Exception as e:
         flash(f"Error generando: {e}", "error")
     return redirect_back("vencimientos.list_view")
@@ -251,7 +272,20 @@ def nuevo():
         db.add(v)
         db.commit()
         _log_actividad(db, "crear", v.id, None, f"Cargó: {v.concepto}")
-        flash("Vencimiento creado.", "success")
+
+        # Si es recurrente y tiene fecha, generar los 11 meses siguientes (estimados).
+        n_horizonte = 0
+        if v.es_recurrente and not v.pausado and v.fecha_vencimiento:
+            from services.generador import generar_horizonte_desde
+            try:
+                n_horizonte = generar_horizonte_desde(v.id)
+            except Exception as e:
+                print(f"[nuevo] No se pudo generar horizonte para {v.id}: {e}", flush=True)
+
+        if n_horizonte:
+            flash(f"Vencimiento creado + {n_horizonte} meses estimados cargados a futuro.", "success")
+        else:
+            flash("Vencimiento creado.", "success")
         return redirect_back("vencimientos.list_view")
     # GET no se usa habitualmente (el form vive como modal en el listado)
     return render_template("vencimientos/form.html", v=None, categorias=CATEGORIAS)

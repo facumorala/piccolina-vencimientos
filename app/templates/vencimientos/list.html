@@ -11,9 +11,9 @@
       </div>
       <div class="flex gap-2 flex-wrap">
         <form method="post" action="{{ url_for('vencimientos.generar_mes_proximo') }}"
-              onsubmit="return confirm('¿Generar los vencimientos recurrentes del próximo mes ahora?');">
-          <button class="btn btn-ghost" type="submit" title="Genera ya los recurrentes del próximo mes">
-            ⟳ Generar mes próximo
+              onsubmit="return confirm('¿Completar el horizonte de los próximos 12 meses ahora?');">
+          <button class="btn btn-ghost" type="submit" title="Crea copias estimadas hasta cubrir 12 meses adelante para todos los recurrentes">
+            ⟳ Generar próximos 12 meses
           </button>
         </form>
         <button class="btn btn-primary" type="button"
@@ -21,6 +21,22 @@
       </div>
     </div>
   </section>
+
+  {# ── Banner global: estimados del mes en curso ───────────────────────── #}
+  {% if estimados_mes %}
+    <div class="banner-estimados" onclick="abrirModalEstimadosMes()" role="button" tabindex="0"
+         onkeypress="if(event.key==='Enter'){abrirModalEstimadosMes()}"
+         title="Click para revisar y confirmar uno por uno">
+      <div class="banner-icono">⚠</div>
+      <div class="banner-texto">
+        <strong>Este mes ({{ nombre_mes_actual }} {{ anio_mes_actual }})</strong> hay
+        <strong>{{ estimados_mes|length }}</strong>
+        vencimiento{{ 's' if estimados_mes|length > 1 else '' }} con fecha o monto estimado
+        sin confirmar.
+      </div>
+      <div class="banner-cta">Revisar →</div>
+    </div>
+  {% endif %}
 
   {# ── Filtros ─────────────────────────────────────────────────────────── #}
   <form id="form-filtros" method="get"
@@ -263,7 +279,8 @@
                   'notas': v.notas or '',
                   'pagado': v.pagado,
                 } | tojson %}
-                <tr class="row-{{ semaforo_clase }}">
+                {% set es_estimado = (v.monto_estimado or v.fecha_estimada) and not v.pagado %}
+                <tr class="row-{{ semaforo_clase }}{% if es_estimado %} row-estimado{% endif %}">
                   <td>
                     <a href="#" onclick='abrirVtoEditar({{ data_vto }}); return false;'
                        style="color: var(--ink); text-decoration: none; font-weight: 500;">
@@ -462,6 +479,59 @@
   </div>
 
   {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Estimados del mes en curso (banner global)                     #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-estimados-mes" class="modal-overlay" style="display: none;">
+    <div class="modal">
+      <h2 class="huge mb-2" style="font-size: 22px;">
+        Estimados de {{ nombre_mes_actual }} {{ anio_mes_actual }}
+      </h2>
+      <p class="text-[13px] mb-4" style="color: var(--ink-2);">
+        Tocá cada uno para abrir el detalle completo y confirmar fecha + monto reales.
+        Al guardar con los datos exactos (sin tildar "estimado"), el vencimiento sale de esta lista.
+      </p>
+      <div style="max-height: 60vh; overflow-y: auto;">
+        {% for v in estimados_mes %}
+          {% set data_vto = {
+            'id': v.id,
+            'categoria': v.categoria,
+            'tipo': v.tipo,
+            'concepto': v.concepto,
+            'periodo_facturado': v.periodo_facturado or '',
+            'monto': (v.monto | string) if v.monto is not none else '',
+            'monto_estimado': v.monto_estimado,
+            'estimado_monto_de': v.estimado_monto_de or '',
+            'fecha_vencimiento': v.fecha_vencimiento.isoformat() if v.fecha_vencimiento else '',
+            'fecha_estimada': v.fecha_estimada,
+            'es_recurrente': v.es_recurrente,
+            'pausado': v.pausado,
+            'notas': v.notas or '',
+            'pagado': v.pagado,
+          } | tojson %}
+          <div class="estimado-fila"
+               onclick='cerrarModal("modal-estimados-mes"); abrirVtoEditar({{ data_vto }});'>
+            <div class="estimado-info">
+              <div class="estimado-concepto">{{ v.concepto }}</div>
+              <div class="estimado-meta">
+                {{ v.categoria | label_categoria }} ·
+                vence {{ v.fecha_vencimiento | fecha }}
+                {% if v.fecha_estimada %}<span class="tag-estimado">fecha estimada</span>{% endif %}
+              </div>
+            </div>
+            <div class="estimado-importe">
+              {{ v.monto | money }}
+              {% if v.monto_estimado %}<span class="tag-estimado">monto estimado</span>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-estimados-mes')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
   {# MODAL: Confirmar todas las fechas de una categoría                    #}
   {# ──────────────────────────────────────────────────────────────────── #}
   <div id="modal-fechas" class="modal-overlay" style="display: none;">
@@ -609,6 +679,53 @@
     }
     .resumen-sub {
       font-size: 11px; font-style: italic;
+    }
+
+    /* Banner global de estimados del mes en curso */
+    .banner-estimados {
+      display: flex; align-items: center; gap: 14px;
+      margin-top: 18px; padding: 14px 18px;
+      background: #FFF4E0; border: 1px solid #E8B86A;
+      border-left: 5px solid #B85C00; border-radius: 8px;
+      cursor: pointer; transition: background 150ms, transform 100ms;
+    }
+    .banner-estimados:hover { background: #FFE9C2; }
+    .banner-estimados:active { transform: scale(0.998); }
+    .banner-icono {
+      font-size: 24px; color: #B85C00; flex-shrink: 0;
+    }
+    .banner-texto {
+      flex: 1; font-size: 14px; color: var(--ink); line-height: 1.4;
+    }
+    .banner-texto strong { color: #6B3100; }
+    .banner-cta {
+      flex-shrink: 0; font-weight: 600; color: #B85C00;
+      font-size: 13px; padding: 4px 10px;
+    }
+
+    /* Fila marcada como estimada (monto o fecha) */
+    .row-estimado td:first-child {
+      box-shadow: inset 3px 0 0 #E8B86A;
+    }
+    .row-estimado {
+      background: linear-gradient(to right, #FFFAEF 0, #FFFAEF 4px, transparent 4px) !important;
+    }
+
+    /* Filas del modal de estimados del mes */
+    .estimado-fila {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 4px; border-bottom: 1px solid var(--rule-2);
+      cursor: pointer; transition: background 120ms;
+    }
+    .estimado-fila:hover { background: #FAF7F0; }
+    .estimado-info { flex: 1; min-width: 0; }
+    .estimado-concepto { font-weight: 500; color: var(--ink); }
+    .estimado-meta {
+      font-size: 11px; color: var(--ink-3); margin-top: 2px;
+    }
+    .estimado-importe {
+      font-variant-numeric: tabular-nums; font-weight: 600;
+      color: var(--ink); text-align: right; white-space: nowrap;
     }
 
     /* Badge de intereses en cada fila */
@@ -792,6 +909,11 @@
       if (montoActual) form.monto_intereses.value = montoActual;
       if (linkActual)  form.link_intereses.value  = linkActual;
       abrirModal('modal-intereses');
+    }
+
+    // ── Modal: estimados del mes en curso (banner global) ──────────────
+    function abrirModalEstimadosMes() {
+      abrirModal('modal-estimados-mes');
     }
 
     // ── Modal: confirmar todas las fechas de una categoría ─────────────
