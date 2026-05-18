@@ -303,6 +303,10 @@ def editar(vid):
 
     alcance = request.form.get("alcance", "solo")  # 'solo' | 'futuros' | 'todos'
 
+    # Estado previo para detectar transición "estimado → confirmado"
+    monto_estimado_antes = v.monto_estimado
+    monto_antes = v.monto
+
     # Aplicar al original
     v.categoria = request.form.get("categoria", v.categoria)
     v.tipo = request.form.get("tipo", v.tipo).strip()
@@ -317,6 +321,30 @@ def editar(vid):
     v.es_recurrente = not (request.form.get("esporadico") == "on")
     v.pausado = request.form.get("pausado") == "on"
     v.notas = (request.form.get("notas") or "").strip() or None
+
+    # AUTO: si Facu acaba de confirmar el monto real (destildó "Importe estimado"
+    # o cambió el monto teniéndolo confirmado), propagar el monto nuevo a las
+    # copias futuras del mismo tipo+categoria que sigan marcadas como estimadas.
+    # No pisa copias que Facu ya editó manualmente (monto_estimado=False).
+    n_montos_propagados = 0
+    confirmo_monto = (monto_estimado_antes and not v.monto_estimado) or (
+        not v.monto_estimado and v.monto is not None and v.monto != monto_antes
+    )
+    if confirmo_monto and v.es_recurrente and v.monto is not None and nueva_fecha:
+        futuros_estimados = db.query(Vencimiento).filter(
+            Vencimiento.id != v.id,
+            Vencimiento.tipo == v.tipo,
+            Vencimiento.categoria == v.categoria,
+            Vencimiento.es_recurrente.is_(True),
+            Vencimiento.plan_id.is_(None),
+            Vencimiento.pagado.is_(False),
+            Vencimiento.monto_estimado.is_(True),
+            Vencimiento.fecha_vencimiento > nueva_fecha,
+        ).all()
+        for f in futuros_estimados:
+            f.monto = v.monto
+            f.estimado_monto_de = v.periodo_facturado or "mes anterior"
+            n_montos_propagados += 1
 
     # Propagar a recurrentes futuros/pendientes
     n_propagados = 0
@@ -336,10 +364,12 @@ def editar(vid):
 
     db.commit()
     _log_actividad(db, "editar", v.id, None, f"Editó: {v.concepto}")
+    mensajes = ["Vencimiento actualizado."]
     if n_propagados:
-        flash(f"Vencimiento actualizado + {n_propagados} recurrentes propagados.", "success")
-    else:
-        flash("Vencimiento actualizado.", "success")
+        mensajes.append(f"{n_propagados} recurrentes propagados.")
+    if n_montos_propagados:
+        mensajes.append(f"{n_montos_propagados} montos estimados a futuro actualizados al nuevo valor.")
+    flash(" ".join(mensajes), "success")
     return redirect_back("vencimientos.list_view")
 
 
