@@ -88,6 +88,13 @@ class Vencimiento(Base):
     plan_id = Column(Integer, ForeignKey("planes.id", ondelete="SET NULL"), nullable=True)
     plan_cuota_nro = Column(Integer, nullable=True)      # ej 7 (de 7/8)
 
+    # Trazabilidad de la factura origen (cuando el vencimiento llega
+    # automáticamente desde el OCR de COMPRAS). Sirven para deduplicar
+    # si el mismo mail entra dos veces y para que las contadoras puedan
+    # cotejar contra el comprobante original.
+    cuit_emisor = Column(String(20), nullable=True)
+    numero_comprobante = Column(String(40), nullable=True)
+
     # Otros
     notas = Column(Text, nullable=True)
     creado_en = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -232,6 +239,9 @@ def _aplicar_migraciones_ligeras(engine):
         # (tabla, columna, tipo SQL portable)
         ("vencimientos", "monto_intereses", "NUMERIC(14, 2)"),
         ("vencimientos", "link_intereses",  "TEXT"),
+        # Trazabilidad de origen (carga automática desde OCR de COMPRAS).
+        ("vencimientos", "cuit_emisor",        "VARCHAR(20)"),
+        ("vencimientos", "numero_comprobante", "VARCHAR(40)"),
     ]
     insp = inspect(engine)
     with engine.begin() as conn:

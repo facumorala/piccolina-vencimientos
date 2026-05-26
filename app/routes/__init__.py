@@ -5,6 +5,7 @@ from .vencimientos import bp as vencimientos_bp
 from .planes import bp as planes_bp
 from .fichas import bp as fichas_bp
 from .config import bp as config_bp
+from .api_externa import bp as api_externa_bp
 
 
 def register_blueprints(app):
@@ -14,3 +15,4 @@ def register_blueprints(app):
     app.register_blueprint(planes_bp, url_prefix="/planes")
     app.register_blueprint(fichas_bp, url_prefix="/manual")
     app.register_blueprint(config_bp, url_prefix="/config")
+    app.register_blueprint(api_externa_bp, url_prefix="/api")
