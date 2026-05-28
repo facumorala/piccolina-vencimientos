@@ -12,6 +12,7 @@ from extensions import get_db, today_ar
 from models import Vencimiento, LogActividad, Ficha, CATEGORIAS
 from auth_helpers import login_required, current_user
 from nav_helpers import redirect_back
+from services.periodo import construir_periodo, TIPOS_PERIODO
 
 bp = Blueprint("vencimientos", __name__)
 
@@ -256,11 +257,32 @@ def confirmar_fechas():
 def nuevo():
     if request.method == "POST":
         db = get_db()
+        categoria = request.form.get("categoria")
+        tipo = request.form.get("tipo", "").strip()
+
+        try:
+            canon, p_desde, p_hasta = _periodo_desde_form(request.form)
+        except ValueError as e:
+            flash(f"Período inválido: {e}", "error")
+            return redirect_back("vencimientos.list_view")
+
+        dup = _buscar_duplicado_periodo(db, categoria, tipo, p_desde, p_hasta)
+        if dup is not None:
+            flash(
+                f"Ya hay un vencimiento de {tipo} ({categoria}) cargado para el período "
+                f"{canon} (id #{dup.id}, concepto «{dup.concepto}»). Si querés reemplazarlo, "
+                "editá el existente.",
+                "error",
+            )
+            return redirect_back("vencimientos.list_view")
+
         v = Vencimiento(
-            categoria=request.form.get("categoria"),
-            tipo=request.form.get("tipo", "").strip(),
+            categoria=categoria,
+            tipo=tipo,
             concepto=request.form.get("concepto", "").strip(),
-            periodo_facturado=(request.form.get("periodo_facturado") or "").strip() or None,
+            periodo_facturado=canon,
+            periodo_desde=p_desde,
+            periodo_hasta=p_hasta,
             monto=_parse_decimal(request.form.get("monto")),
             monto_estimado=request.form.get("monto_estimado") == "on",
             estimado_monto_de=(request.form.get("estimado_monto_de") or "").strip() or None,
@@ -308,10 +330,30 @@ def editar(vid):
     monto_antes = v.monto
 
     # Aplicar al original
-    v.categoria = request.form.get("categoria", v.categoria)
-    v.tipo = request.form.get("tipo", v.tipo).strip()
+    nueva_categoria = request.form.get("categoria", v.categoria)
+    nuevo_tipo = request.form.get("tipo", v.tipo).strip()
+
+    try:
+        canon, p_desde, p_hasta = _periodo_desde_form(request.form)
+    except ValueError as e:
+        flash(f"Período inválido: {e}", "error")
+        return redirect_back("vencimientos.list_view")
+
+    dup = _buscar_duplicado_periodo(db, nueva_categoria, nuevo_tipo, p_desde, p_hasta, excluir_id=v.id)
+    if dup is not None:
+        flash(
+            f"Ya hay otro vencimiento de {nuevo_tipo} ({nueva_categoria}) para el período "
+            f"{canon} (id #{dup.id}). No se guardaron los cambios.",
+            "error",
+        )
+        return redirect_back("vencimientos.list_view")
+
+    v.categoria = nueva_categoria
+    v.tipo = nuevo_tipo
     v.concepto = request.form.get("concepto", v.concepto).strip()
-    v.periodo_facturado = (request.form.get("periodo_facturado") or "").strip() or None
+    v.periodo_facturado = canon
+    v.periodo_desde = p_desde
+    v.periodo_hasta = p_hasta
     v.monto = _parse_decimal(request.form.get("monto"))
     v.monto_estimado = request.form.get("monto_estimado") == "on"
     v.estimado_monto_de = (request.form.get("estimado_monto_de") or "").strip() or None
@@ -489,6 +531,63 @@ def eliminar_pago(vid):
 
 
 # ─── Helpers internos ─────────────────────────────────────────────────────────
+
+def _periodo_desde_form(form):
+    """
+    Lee del form los campos del selector estructurado de período y devuelve
+    `(canonico, periodo_desde, periodo_hasta)`. Lanza ValueError si falta
+    el tipo o los datos del tipo elegido.
+    """
+    tipo = (form.get("periodo_tipo") or "").strip().lower()
+    if not tipo:
+        raise ValueError("Tenés que elegir el tipo de período (mensual, bimestral, etc.).")
+    if tipo not in TIPOS_PERIODO:
+        raise ValueError(f"Tipo de período no reconocido: {tipo}.")
+
+    def _entero(name):
+        val = (form.get(name) or "").strip()
+        if not val:
+            return None
+        try:
+            return int(val)
+        except ValueError:
+            return None
+
+    return construir_periodo(
+        tipo,
+        anio=_entero("periodo_anio"),
+        mes=_entero("periodo_mes"),
+        semestre=_entero("periodo_semestre"),
+        desde_anio=_entero("periodo_desde_anio"),
+        desde_mes=_entero("periodo_desde_mes"),
+        hasta_anio=_entero("periodo_hasta_anio"),
+        hasta_mes=_entero("periodo_hasta_mes"),
+    )
+
+
+def _buscar_duplicado_periodo(db, categoria, tipo, p_desde, p_hasta, excluir_id=None):
+    """
+    Devuelve el vencimiento existente que ya cubre EXACTAMENTE el mismo
+    período (mismo desde/hasta) y mismo tipo+categoría, o None.
+
+    Sirve para impedir que se cargue dos veces el mismo servicio/impuesto/
+    honorario para el mismo mes/bimestre/etc. Los vencimientos que son
+    cuotas de un plan (plan_cuota_nro IS NOT NULL) no se consideran
+    duplicados — cuotas iguales son válidas dentro de una financiación.
+    """
+    if not p_desde or not p_hasta:
+        return None
+    q = db.query(Vencimiento).filter(
+        Vencimiento.categoria == categoria,
+        Vencimiento.tipo == tipo,
+        Vencimiento.periodo_desde == p_desde,
+        Vencimiento.periodo_hasta == p_hasta,
+        Vencimiento.plan_cuota_nro.is_(None),
+    )
+    if excluir_id is not None:
+        q = q.filter(Vencimiento.id != excluir_id)
+    return q.first()
+
 
 def _parse_decimal(s):
     if s is None or str(s).strip() == "":

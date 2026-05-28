@@ -56,9 +56,14 @@ class Vencimiento(Base):
     concepto = Column(String(200), nullable=False)        # 'IIBB nov 2025', 'Edenor medidor 1 mar-abr 26'
 
     # Período facturado: a qué consumo/mes corresponde la factura, independiente
-    # de cuándo se paga. Texto libre porque puede ser 'mar-abr 2026' (bimestral)
-    # o '2025' (Bienes Personales) o 'mayo 2026' (mensual).
+    # de cuándo se paga. Desde 27-may-2026 se carga vía un selector estructurado
+    # (tipo + mes/año) que genera un string canónico ('mayo 2026', 'mar-abr 2026',
+    # 'ene-jun 2026', '2025', etc.) y completa además `periodo_desde` y
+    # `periodo_hasta` con fechas calculadas — el Financiero usa esos dos campos
+    # para atribuir el costo mes a mes sin parsear strings.
     periodo_facturado = Column(String(80), nullable=True)
+    periodo_desde = Column(Date, nullable=True)   # primer día del primer mes del período
+    periodo_hasta = Column(Date, nullable=True)   # último día del último mes del período
 
     # Importe
     monto = Column(Numeric(14, 2), nullable=True)        # nullable porque puede faltar dato
@@ -242,8 +247,12 @@ def _aplicar_migraciones_ligeras(engine):
         # Trazabilidad de origen (carga automática desde OCR de COMPRAS).
         ("vencimientos", "cuit_emisor",        "VARCHAR(20)"),
         ("vencimientos", "numero_comprobante", "VARCHAR(40)"),
+        # Período facturado estructurado (27-may-2026).
+        ("vencimientos", "periodo_desde", "DATE"),
+        ("vencimientos", "periodo_hasta", "DATE"),
     ]
     insp = inspect(engine)
+    columnas_recien_agregadas = set()
     with engine.begin() as conn:
         for tabla, columna, tipo in columnas_a_agregar:
             if not insp.has_table(tabla):
@@ -253,6 +262,43 @@ def _aplicar_migraciones_ligeras(engine):
                 continue
             try:
                 conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}"))
+                columnas_recien_agregadas.add((tabla, columna))
                 print(f"[migracion] {tabla}.{columna} agregada.", flush=True)
             except Exception as e:
                 print(f"[migracion] No se pudo agregar {tabla}.{columna}: {e}", flush=True)
+
+    # Backfill de periodo_desde / periodo_hasta para vencimientos viejos:
+    # se intenta parsear el periodo_facturado actual. Los que no parsean
+    # quedan en NULL y se completan cuando Facu edite cada vencimiento.
+    if ("vencimientos", "periodo_desde") in columnas_recien_agregadas:
+        try:
+            _backfill_periodo_estructurado(engine)
+        except Exception as e:
+            print(f"[migracion] Backfill periodo_desde/hasta falló: {e}", flush=True)
+
+
+def _backfill_periodo_estructurado(engine):
+    """Rellena periodo_desde / periodo_hasta parseando el texto libre viejo."""
+    # Import perezoso para evitar dependencia circular en arranque.
+    from services.periodo import parsear_legacy
+
+    with engine.begin() as conn:
+        filas = conn.execute(text(
+            "SELECT id, periodo_facturado FROM vencimientos "
+            "WHERE periodo_desde IS NULL AND periodo_facturado IS NOT NULL"
+        )).fetchall()
+        ok = 0
+        nok = 0
+        for fila in filas:
+            vid = fila[0]
+            txt = fila[1]
+            d, h = parsear_legacy(txt)
+            if d and h:
+                conn.execute(
+                    text("UPDATE vencimientos SET periodo_desde = :d, periodo_hasta = :h WHERE id = :id"),
+                    {"d": d, "h": h, "id": vid},
+                )
+                ok += 1
+            else:
+                nok += 1
+        print(f"[migracion] Backfill periodos: {ok} parseados, {nok} sin parsear (quedan en NULL).", flush=True)

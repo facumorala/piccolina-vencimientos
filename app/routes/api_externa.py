@@ -116,11 +116,22 @@ def vencimiento_desde_compras():
     periodo = (data.get("periodo_facturado") or "").strip() or None
     marcar_estimado = bool(data.get("marcar_estimado", False))
 
+    # Intentamos derivar periodo_desde/hasta del string. Si no se puede,
+    # caemos al mes de la fecha de vencimiento como fallback (igual queda
+    # marcado como estimado, para que Facu lo revise al editar).
+    from services.periodo import parsear_legacy, primer_dia, ultimo_dia
+    p_desde, p_hasta = parsear_legacy(periodo)
+    if (not p_desde or not p_hasta) and fecha_vto is not None:
+        p_desde = primer_dia(fecha_vto.year, fecha_vto.month)
+        p_hasta = ultimo_dia(fecha_vto.year, fecha_vto.month)
+
     v = Vencimiento(
         categoria=categoria,
         tipo=tipo,
         concepto=concepto,
         periodo_facturado=periodo,
+        periodo_desde=p_desde,
+        periodo_hasta=p_hasta,
         monto=monto,
         monto_estimado=marcar_estimado,
         estimado_monto_de="OCR — revisar" if marcar_estimado else None,

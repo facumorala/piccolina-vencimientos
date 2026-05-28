@@ -210,12 +210,17 @@ def _seed_recurrentes_mes_actual(db):
         meses_es = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
                     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
         periodo = f"{meses_es[hoy.month]} {hoy.year}"
+        from services.periodo import primer_dia, ultimo_dia
+        p_desde = primer_dia(hoy.year, hoy.month)
+        p_hasta = ultimo_dia(hoy.year, hoy.month)
 
         v = Vencimiento(
             categoria=categoria,
             tipo=tipo,
             concepto=f"{tipo} {periodo}",
             periodo_facturado=periodo,
+            periodo_desde=p_desde,
+            periodo_hasta=p_hasta,
             monto=monto_fijo,
             monto_estimado=False if monto_fijo else False,
             fecha_vencimiento=fecha,

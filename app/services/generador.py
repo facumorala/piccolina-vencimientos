@@ -26,6 +26,7 @@ from datetime import date
 
 from extensions import SessionFactory, today_ar
 from models import Vencimiento
+from services.periodo import primer_dia, ultimo_dia
 
 
 HORIZONTE_MESES = 12
@@ -127,11 +128,24 @@ def _calcular_periodo_copia(origen: Vencimiento, nueva_fecha: date) -> str | Non
 def _crear_copia(origen: Vencimiento, nueva_fecha: date) -> Vencimiento:
     """Crea una copia estimada de `origen` con la fecha indicada."""
     nuevo_periodo = _calcular_periodo_copia(origen, nueva_fecha)
+    # periodo_desde/hasta de la copia: si el período es parseable como
+    # "mes-año" simple, lo usamos. Si no (bimestrales, anuales, libre),
+    # caemos al mes del vencimiento como mejor aproximación. La fila queda
+    # marcada como estimada, así que Facu lo va a revisar al editarla igual.
+    nuevo_periodo_simple = _parsear_periodo_simple(nuevo_periodo)
+    if nuevo_periodo_simple:
+        p_desde = primer_dia(nuevo_periodo_simple.year, nuevo_periodo_simple.month)
+        p_hasta = ultimo_dia(nuevo_periodo_simple.year, nuevo_periodo_simple.month)
+    else:
+        p_desde = primer_dia(nueva_fecha.year, nueva_fecha.month)
+        p_hasta = ultimo_dia(nueva_fecha.year, nueva_fecha.month)
     return Vencimiento(
         categoria=origen.categoria,
         tipo=origen.tipo,
         concepto=origen.tipo,
         periodo_facturado=nuevo_periodo,
+        periodo_desde=p_desde,
+        periodo_hasta=p_hasta,
         monto=origen.monto,
         monto_estimado=True,
         estimado_monto_de=origen.periodo_facturado or "mes anterior",

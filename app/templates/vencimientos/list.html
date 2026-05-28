@@ -269,6 +269,8 @@
                   'tipo': v.tipo,
                   'concepto': v.concepto,
                   'periodo_facturado': v.periodo_facturado or '',
+                  'periodo_desde': v.periodo_desde.isoformat() if v.periodo_desde else '',
+                  'periodo_hasta': v.periodo_hasta.isoformat() if v.periodo_hasta else '',
                   'monto': (v.monto | string) if v.monto is not none else '',
                   'monto_estimado': v.monto_estimado,
                   'estimado_monto_de': v.estimado_monto_de or '',
@@ -362,8 +364,91 @@
         <label>Concepto (ej: IIBB nov 2025)</label>
         <input class="input-box" name="concepto" type="text" required>
 
-        <label>Período facturado (ej: nov 2025, mar-abr 2026)</label>
-        <input class="input-box" name="periodo_facturado" type="text">
+        <label>Período facturado <span style="color: var(--brand);">*</span></label>
+        <p class="text-[11px]" style="color: var(--ink-3); margin-top: -2px; margin-bottom: 6px;">
+          A qué mes/meses corresponde lo que estás pagando (independiente de la fecha de vencimiento).
+        </p>
+        <select id="periodo_tipo" name="periodo_tipo" class="input-box" required
+                onchange="actualizarPeriodoUI()">
+          <option value="">— Elegí tipo de período —</option>
+          <option value="mensual">Mensual (1 mes)</option>
+          <option value="bimestral">Bimestral (2 meses)</option>
+          <option value="trimestral">Trimestral (3 meses)</option>
+          <option value="semestral">Semestral (6 meses)</option>
+          <option value="anual">Anual (12 meses)</option>
+          <option value="personalizado">Personalizado (rango libre)</option>
+        </select>
+
+        {# Bloque visible cuando es mensual / bimestral / trimestral (mes inicial + año) #}
+        <div id="periodo-bloque-mes-inicial" style="display: none; margin-top: 8px;">
+          <div style="display: flex; gap: 8px;">
+            <select id="periodo_mes" name="periodo_mes" class="input-box" style="flex: 2;">
+              <option value="">Mes…</option>
+              <option value="1">Enero</option>   <option value="2">Febrero</option>
+              <option value="3">Marzo</option>   <option value="4">Abril</option>
+              <option value="5">Mayo</option>    <option value="6">Junio</option>
+              <option value="7">Julio</option>   <option value="8">Agosto</option>
+              <option value="9">Septiembre</option><option value="10">Octubre</option>
+              <option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+            <input id="periodo_anio" name="periodo_anio" type="number"
+                   class="input-box" placeholder="Año" min="2000" max="2099" style="flex: 1;">
+          </div>
+          <p id="periodo-preview" class="text-[12px]" style="color: var(--brand); margin-top: 4px; min-height: 18px;"></p>
+        </div>
+
+        {# Bloque semestral: 1er / 2do semestre + año (comparte input periodo_anio) #}
+        <div id="periodo-bloque-semestral" style="display: none; margin-top: 8px;">
+          <div style="display: flex; gap: 8px;">
+            <select id="periodo_semestre" name="periodo_semestre" class="input-box" style="flex: 2;">
+              <option value="">Semestre…</option>
+              <option value="1">1er semestre (ene-jun)</option>
+              <option value="2">2do semestre (jul-dic)</option>
+            </select>
+            <input id="periodo_anio_sem" type="number"
+                   class="input-box" placeholder="Año" min="2000" max="2099" style="flex: 1;"
+                   onchange="document.getElementById('periodo_anio').value = this.value;">
+          </div>
+        </div>
+
+        {# Bloque anual: solo año (comparte input periodo_anio) #}
+        <div id="periodo-bloque-anual" style="display: none; margin-top: 8px;">
+          <input id="periodo_anio_anual" type="number"
+                 class="input-box" placeholder="Año (ej 2025)" min="2000" max="2099"
+                 onchange="document.getElementById('periodo_anio').value = this.value;">
+        </div>
+
+        {# Bloque personalizado: desde mes/año, hasta mes/año #}
+        <div id="periodo-bloque-personalizado" style="display: none; margin-top: 8px;">
+          <p class="text-[11px]" style="color: var(--ink-3); margin-bottom: 4px;">Desde:</p>
+          <div style="display: flex; gap: 8px;">
+            <select id="periodo_desde_mes" name="periodo_desde_mes" class="input-box" style="flex: 2;">
+              <option value="">Mes…</option>
+              <option value="1">Enero</option><option value="2">Febrero</option>
+              <option value="3">Marzo</option><option value="4">Abril</option>
+              <option value="5">Mayo</option><option value="6">Junio</option>
+              <option value="7">Julio</option><option value="8">Agosto</option>
+              <option value="9">Septiembre</option><option value="10">Octubre</option>
+              <option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+            <input id="periodo_desde_anio" name="periodo_desde_anio" type="number"
+                   class="input-box" placeholder="Año" min="2000" max="2099" style="flex: 1;">
+          </div>
+          <p class="text-[11px]" style="color: var(--ink-3); margin-top: 8px; margin-bottom: 4px;">Hasta:</p>
+          <div style="display: flex; gap: 8px;">
+            <select id="periodo_hasta_mes" name="periodo_hasta_mes" class="input-box" style="flex: 2;">
+              <option value="">Mes…</option>
+              <option value="1">Enero</option><option value="2">Febrero</option>
+              <option value="3">Marzo</option><option value="4">Abril</option>
+              <option value="5">Mayo</option><option value="6">Junio</option>
+              <option value="7">Julio</option><option value="8">Agosto</option>
+              <option value="9">Septiembre</option><option value="10">Octubre</option>
+              <option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+            <input id="periodo_hasta_anio" name="periodo_hasta_anio" type="number"
+                   class="input-box" placeholder="Año" min="2000" max="2099" style="flex: 1;">
+          </div>
+        </div>
 
         <label>Importe</label>
         <input class="input-box" name="monto" type="number" step="0.01" placeholder="$">
@@ -836,6 +921,9 @@
       document.getElementById('modal-vto-titulo').textContent = 'Nuevo vencimiento';
       document.getElementById('bloque-alcance').style.display = 'none';
       document.getElementById('btn-eliminar').style.display = 'none';
+      // Pre-seleccionar mensual por ser el caso más común
+      document.getElementById('periodo_tipo').value = 'mensual';
+      actualizarPeriodoUI();
       _editarId = null;
       abrirModal('modal-vto');
     }
@@ -850,7 +938,8 @@
       form.categoria.value = v.categoria;
       form.tipo.value = v.tipo;
       form.concepto.value = v.concepto;
-      form.periodo_facturado.value = v.periodo_facturado || '';
+      // Período: derivar tipo + valores desde periodo_desde / periodo_hasta
+      hidratarPeriodoEnForm(v.periodo_desde || '', v.periodo_hasta || '', v.periodo_facturado || '');
       form.monto.value = v.monto || '';
       form.monto_estimado.checked = v.monto_estimado;
       form.estimado_monto_de.value = v.estimado_monto_de || '';
@@ -868,6 +957,142 @@
       _editarConcepto = v.concepto;
       abrirModal('modal-vto');
     }
+
+    // ── Selector estructurado de período ───────────────────────────────
+    const _MESES_ES_LARGO = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                             'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    function actualizarPeriodoUI() {
+      const tipo = document.getElementById('periodo_tipo').value;
+      const bloques = {
+        'mensual':       'periodo-bloque-mes-inicial',
+        'bimestral':     'periodo-bloque-mes-inicial',
+        'trimestral':    'periodo-bloque-mes-inicial',
+        'semestral':     'periodo-bloque-semestral',
+        'anual':         'periodo-bloque-anual',
+        'personalizado': 'periodo-bloque-personalizado',
+      };
+      // Ocultar todos
+      ['periodo-bloque-mes-inicial', 'periodo-bloque-semestral',
+       'periodo-bloque-anual', 'periodo-bloque-personalizado'].forEach(id => {
+        document.getElementById(id).style.display = 'none';
+      });
+      // Limpiar inputs que no corresponden al tipo elegido (para no mandar basura al backend)
+      const tiposMesInicial = ['mensual', 'bimestral', 'trimestral'];
+      if (!tiposMesInicial.includes(tipo)) {
+        document.getElementById('periodo_mes').value = '';
+      }
+      if (tipo !== 'semestral') {
+        document.getElementById('periodo_semestre').value = '';
+      }
+      if (tipo !== 'personalizado') {
+        document.getElementById('periodo_desde_mes').value = '';
+        document.getElementById('periodo_desde_anio').value = '';
+        document.getElementById('periodo_hasta_mes').value = '';
+        document.getElementById('periodo_hasta_anio').value = '';
+      }
+      // Mostrar el correspondiente
+      if (bloques[tipo]) {
+        document.getElementById(bloques[tipo]).style.display = 'block';
+      }
+      actualizarPreviewPeriodo();
+    }
+
+    function actualizarPreviewPeriodo() {
+      const tipo = document.getElementById('periodo_tipo').value;
+      const mes = parseInt(document.getElementById('periodo_mes').value, 10);
+      const anio = parseInt(document.getElementById('periodo_anio').value, 10);
+      const preview = document.getElementById('periodo-preview');
+      if (!preview) return;
+      preview.textContent = '';
+      if (!mes || !anio) return;
+      const fin = (n) => {
+        const m = ((mes - 1 + n) % 12) + 1;
+        const a = anio + Math.floor((mes - 1 + n) / 12);
+        return { mes: m, anio: a };
+      };
+      if (tipo === 'mensual') {
+        preview.textContent = `Cubre: ${_MESES_ES_LARGO[mes]} ${anio}`;
+      } else if (tipo === 'bimestral') {
+        const f = fin(1);
+        preview.textContent = `Cubre: ${_MESES_ES_LARGO[mes]} ${anio} – ${_MESES_ES_LARGO[f.mes]} ${f.anio}`;
+      } else if (tipo === 'trimestral') {
+        const f = fin(2);
+        preview.textContent = `Cubre: ${_MESES_ES_LARGO[mes]} ${anio} – ${_MESES_ES_LARGO[f.mes]} ${f.anio}`;
+      }
+    }
+
+    // Reconstruye el tipo/valores del selector de período a partir de las
+    // fechas desde/hasta (ISO) guardadas, o cae al texto libre si no las tiene.
+    function hidratarPeriodoEnForm(desdeStr, hastaStr, periodoTexto) {
+      const sel = document.getElementById('periodo_tipo');
+      // Reset campos
+      sel.value = '';
+      document.getElementById('periodo_mes').value = '';
+      document.getElementById('periodo_anio').value = '';
+      document.getElementById('periodo_semestre').value = '';
+      document.getElementById('periodo_anio_sem').value = '';
+      document.getElementById('periodo_anio_anual').value = '';
+      document.getElementById('periodo_desde_mes').value = '';
+      document.getElementById('periodo_desde_anio').value = '';
+      document.getElementById('periodo_hasta_mes').value = '';
+      document.getElementById('periodo_hasta_anio').value = '';
+
+      if (!desdeStr || !hastaStr) {
+        // Vencimiento viejo sin fechas estructuradas — dejar mensual vacío
+        // para que Facu elija manualmente. El texto se ve en el placeholder.
+        if (periodoTexto) {
+          alert(`Este vencimiento tiene un período viejo cargado como texto libre: "${periodoTexto}".\n` +
+                `Elegí el tipo correcto (mensual/bimestral/etc.) y el mes/año para que quede estructurado.`);
+        }
+        sel.value = 'mensual';
+        actualizarPeriodoUI();
+        return;
+      }
+
+      const [da, dm, dd] = desdeStr.split('-').map(Number);
+      const [ha, hm, hd] = hastaStr.split('-').map(Number);
+      // Cantidad de meses cubiertos
+      const meses = (ha - da) * 12 + (hm - dm) + 1;
+
+      if (meses === 1) {
+        sel.value = 'mensual';
+        document.getElementById('periodo_mes').value = String(dm);
+        document.getElementById('periodo_anio').value = String(da);
+      } else if (meses === 2) {
+        sel.value = 'bimestral';
+        document.getElementById('periodo_mes').value = String(dm);
+        document.getElementById('periodo_anio').value = String(da);
+      } else if (meses === 3) {
+        sel.value = 'trimestral';
+        document.getElementById('periodo_mes').value = String(dm);
+        document.getElementById('periodo_anio').value = String(da);
+      } else if (meses === 6 && da === ha && (dm === 1 || dm === 7)) {
+        sel.value = 'semestral';
+        document.getElementById('periodo_semestre').value = (dm === 1) ? '1' : '2';
+        document.getElementById('periodo_anio_sem').value = String(da);
+        document.getElementById('periodo_anio').value = String(da);
+      } else if (meses === 12 && dm === 1 && hm === 12 && da === ha) {
+        sel.value = 'anual';
+        document.getElementById('periodo_anio_anual').value = String(da);
+        document.getElementById('periodo_anio').value = String(da);
+      } else {
+        sel.value = 'personalizado';
+        document.getElementById('periodo_desde_mes').value = String(dm);
+        document.getElementById('periodo_desde_anio').value = String(da);
+        document.getElementById('periodo_hasta_mes').value = String(hm);
+        document.getElementById('periodo_hasta_anio').value = String(ha);
+      }
+      actualizarPeriodoUI();
+    }
+
+    // Listeners de preview en vivo (mensual / bimestral / trimestral)
+    document.addEventListener('DOMContentLoaded', () => {
+      const mes = document.getElementById('periodo_mes');
+      const anio = document.getElementById('periodo_anio');
+      if (mes) mes.addEventListener('change', actualizarPreviewPeriodo);
+      if (anio) anio.addEventListener('input', actualizarPreviewPeriodo);
+    });
 
     // ── Modal: eliminar con alcance ────────────────────────────────────
     let _editarEsRecurrente = false;
