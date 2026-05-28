@@ -3,12 +3,27 @@
 
 {% set MESES = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
                 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'] %}
-{% set mes_actual = MESES[hoy.month] | upper %}
+{# `mes_ref` viene del handler — primer día del mes que se está viendo
+   (el actual por default, o el que vino por ?mes=YYYY-MM). #}
+{% set mes_etiqueta = MESES[mes_ref.month] | upper %}
 
 {% block content %}
+  {# ── Selector de mes (botones anterior / actual / siguiente) ──────────── #}
+  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+              margin-bottom: 16px; font-size: 14px;">
+    <a href="{{ url_for('home.dashboard', mes=prev_mes_str) }}"
+       class="btn btn-ghost" style="padding: 6px 12px;">← Mes anterior</a>
+    {% if not es_mes_actual_view %}
+      <a href="{{ url_for('home.dashboard') }}"
+         class="btn btn-primary" style="padding: 6px 12px;">Hoy</a>
+    {% endif %}
+    <a href="{{ url_for('home.dashboard', mes=next_mes_str) }}"
+       class="btn btn-ghost" style="padding: 6px 12px;">Mes siguiente →</a>
+  </div>
+
   {# ── Page Header: kicker + saludo grande + sub con contador ─────────── #}
   {% set _saludo = 'Buen día' if hora_actual < 13 else ('Buenas tardes' if hora_actual < 20 else 'Buenas noches') %}
-  {% set kicker = 'VENCIMIENTOS · ' ~ mes_actual ~ ' ' ~ hoy.year %}
+  {% set kicker = 'VENCIMIENTOS · ' ~ mes_etiqueta ~ ' ' ~ mes_ref.year %}
   {% set title_html = _saludo ~ ', <span style="color: var(--brand);">' ~ user_name ~ '</span><span style="color: var(--brand); font-weight: 400;">.</span>' %}
   {% set subtitle = 'Pendiente este mes: <strong>' ~ (total_mes_pendiente | money) ~ '</strong> de un total de <strong>' ~ (total_mes_bruto | money) ~ '</strong>. Mes anterior, lo debido fue ' ~ (total_mes_anterior | money) ~ '.' %}
   {% include 'identidad/_page_header.html' %}
