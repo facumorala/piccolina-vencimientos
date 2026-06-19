@@ -38,55 +38,74 @@ def list_view():
     rango_activo = (f_fecha_desde or f_fecha_hasta) and f_fecha_tipo in ("vencimiento", "pago")
     periodo_activo = f_fecha_tipo == "periodo" and f_periodo_texto
 
+    # ── Solapa activa: 'vencimientos' (presente) | 'estimaciones' (lo que viene) ──
+    vista = request.args.get("vista", "vencimientos")
+    if vista not in ("vencimientos", "estimaciones"):
+        vista = "vencimientos"
+
+    # Inicio del mes próximo (frontera entre "presente" y "estimaciones").
+    primer_dia_mes_actual = hoy.replace(day=1)
+    if primer_dia_mes_actual.month == 12:
+        inicio_mes_proximo = primer_dia_mes_actual.replace(year=primer_dia_mes_actual.year + 1, month=1)
+    else:
+        inicio_mes_proximo = primer_dia_mes_actual.replace(month=primer_dia_mes_actual.month + 1)
+
     q = db.query(Vencimiento)
 
     if f_categoria:
         q = q.filter(Vencimiento.categoria.in_(f_categoria))
     if f_tipo:
         q = q.filter(Vencimiento.tipo == f_tipo)
-    if f_estimado == "si":
-        q = q.filter((Vencimiento.monto_estimado.is_(True)) | (Vencimiento.fecha_estimada.is_(True)))
-    elif f_estimado == "no":
-        q = q.filter(Vencimiento.monto_estimado.is_(False), Vencimiento.fecha_estimada.is_(False))
 
-    # Filtros de fecha (rango por vencimiento / pago / texto de período)
-    if f_fecha_tipo == "vencimiento":
-        if f_fecha_desde:
-            q = q.filter(Vencimiento.fecha_vencimiento >= f_fecha_desde)
-        if f_fecha_hasta:
-            q = q.filter(Vencimiento.fecha_vencimiento <= f_fecha_hasta)
-    elif f_fecha_tipo == "pago":
-        if f_fecha_desde:
-            q = q.filter(Vencimiento.fecha_pago >= f_fecha_desde)
-        if f_fecha_hasta:
-            q = q.filter(Vencimiento.fecha_pago <= f_fecha_hasta)
-    elif f_fecha_tipo == "periodo" and f_periodo_texto:
-        q = q.filter(Vencimiento.periodo_facturado.ilike(f"%{f_periodo_texto}%"))
+    if vista == "estimaciones":
+        # Solapa "Estimaciones": lo que viene (mes próximo en adelante), sin pagar.
+        # Es su propio recorte temporal → ignora los filtros de estado / estimado /
+        # fecha del form (salvo categoría, que sí sigue aplicando arriba).
+        q = q.filter(
+            Vencimiento.pagado.is_(False),
+            Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
+            Vencimiento.fecha_vencimiento >= inicio_mes_proximo,
+        )
+    else:
+        if f_estimado == "si":
+            q = q.filter((Vencimiento.monto_estimado.is_(True)) | (Vencimiento.fecha_estimada.is_(True)))
+        elif f_estimado == "no":
+            q = q.filter(Vencimiento.monto_estimado.is_(False), Vencimiento.fecha_estimada.is_(False))
 
-    # Estado
-    if f_estado == "pagado":
-        q = q.filter(Vencimiento.pagado.is_(True))
-    elif f_estado == "en_plan":
-        q = q.filter(Vencimiento.plan_id.isnot(None), Vencimiento.plan_cuota_nro.is_(None))
-    elif f_estado == "no_pagado":
-        if rango_activo or periodo_activo:
-            # Hay filtro de fecha activo → respetar el rango, solo filtrar por no pagado.
-            q = q.filter(
-                Vencimiento.pagado.is_(False),
-                Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
-            )
-        else:
-            # Default sin filtro de fecha: lo no pagado del mes en curso + atrasado.
-            primer_dia_mes = hoy.replace(day=1)
-            if primer_dia_mes.month == 12:
-                fin_mes = primer_dia_mes.replace(year=primer_dia_mes.year + 1, month=1)
+        # Filtros de fecha (rango por vencimiento / pago / texto de período)
+        if f_fecha_tipo == "vencimiento":
+            if f_fecha_desde:
+                q = q.filter(Vencimiento.fecha_vencimiento >= f_fecha_desde)
+            if f_fecha_hasta:
+                q = q.filter(Vencimiento.fecha_vencimiento <= f_fecha_hasta)
+        elif f_fecha_tipo == "pago":
+            if f_fecha_desde:
+                q = q.filter(Vencimiento.fecha_pago >= f_fecha_desde)
+            if f_fecha_hasta:
+                q = q.filter(Vencimiento.fecha_pago <= f_fecha_hasta)
+        elif f_fecha_tipo == "periodo" and f_periodo_texto:
+            q = q.filter(Vencimiento.periodo_facturado.ilike(f"%{f_periodo_texto}%"))
+
+        # Estado
+        if f_estado == "pagado":
+            q = q.filter(Vencimiento.pagado.is_(True))
+        elif f_estado == "en_plan":
+            q = q.filter(Vencimiento.plan_id.isnot(None), Vencimiento.plan_cuota_nro.is_(None))
+        elif f_estado == "no_pagado":
+            if rango_activo or periodo_activo:
+                # Hay filtro de fecha activo → respetar el rango, solo filtrar por no pagado.
+                q = q.filter(
+                    Vencimiento.pagado.is_(False),
+                    Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
+                )
             else:
-                fin_mes = primer_dia_mes.replace(month=primer_dia_mes.month + 1)
-            q = q.filter(
-                Vencimiento.pagado.is_(False),
-                Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
-                (Vencimiento.fecha_vencimiento < fin_mes) | (Vencimiento.fecha_vencimiento.is_(None)),
-            )
+                # Default sin filtro de fecha: lo no pagado del mes en curso + atrasado.
+                # (El mes próximo en adelante NO aparece acá — vive en la solapa Estimaciones.)
+                q = q.filter(
+                    Vencimiento.pagado.is_(False),
+                    Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
+                    (Vencimiento.fecha_vencimiento < inicio_mes_proximo) | (Vencimiento.fecha_vencimiento.is_(None)),
+                )
 
     # Ordenar: más vencidos primero (fechas viejas), luego nulls al final
     q = q.order_by(Vencimiento.fecha_vencimiento.asc().nullslast(), Vencimiento.id.desc())
@@ -176,8 +195,35 @@ def list_view():
         (Vencimiento.monto_estimado.is_(True)) | (Vencimiento.fecha_estimada.is_(True)),
     ).order_by(Vencimiento.fecha_vencimiento.asc()).all()
 
+    # ── Contador de la solapa "Estimaciones": lo que viene (mes próximo +), sin pagar ──
+    n_estimaciones = db.query(Vencimiento).filter(
+        Vencimiento.pagado.is_(False),
+        Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
+        Vencimiento.fecha_vencimiento >= inicio_mes_proximo,
+    ).count()
+
+    # ── Proyecciones viejas a limpiar (sobrantes del horizonte de 12 meses) ──
+    # Estimaciones recurrentes sueltas, sin pagar, más allá del mes próximo. Son
+    # copias auto-generadas que ya nadie confirmó. Se cuentan acá para mostrar el
+    # número en el botón de limpieza ANTES de borrar nada.
+    if inicio_mes_proximo.month == 12:
+        inicio_proyecciones_viejas = inicio_mes_proximo.replace(year=inicio_mes_proximo.year + 1, month=1)
+    else:
+        inicio_proyecciones_viejas = inicio_mes_proximo.replace(month=inicio_mes_proximo.month + 1)
+    n_proyecciones_viejas = db.query(Vencimiento).filter(
+        Vencimiento.pagado.is_(False),
+        Vencimiento.plan_id.is_(None),
+        Vencimiento.es_recurrente.is_(True),
+        Vencimiento.fecha_estimada.is_(True),
+        Vencimiento.monto_estimado.is_(True),
+        Vencimiento.fecha_vencimiento >= inicio_proyecciones_viejas,
+    ).count()
+
     return render_template(
         "vencimientos/list.html",
+        vista=vista,
+        n_estimaciones=n_estimaciones,
+        n_proyecciones_viejas=n_proyecciones_viejas,
         agrupados=agrupados,
         subtotales=subtotales,
         fechas_estimadas_por_cat=fechas_estimadas_por_cat,
@@ -208,16 +254,63 @@ _NOMBRE_MES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
 @bp.route("/generar-mes-proximo", methods=["POST"])
 @login_required
 def generar_mes_proximo():
-    """Completa el horizonte rodante de 12 meses (botón manual)."""
+    """Asegura que cada recurrente tenga cargado el mes actual + el próximo (botón manual)."""
     from services.generador import asegurar_horizonte_completo
     try:
         n = asegurar_horizonte_completo()
         if n:
-            flash(f"Se crearon {n} vencimientos estimados para completar 12 meses adelante.", "success")
+            flash(f"Se crearon {n} estimaciones del mes próximo.", "success")
         else:
-            flash("Todos los recurrentes ya tienen sus 12 meses cargados.", "success")
+            flash("Todos los recurrentes ya tienen el mes próximo cargado.", "success")
     except Exception as e:
         flash(f"Error generando: {e}", "error")
+    return redirect_back("vencimientos.list_view")
+
+
+# ─── Limpieza de proyecciones viejas (sobrantes del horizonte de 12 meses) ───
+
+@bp.route("/limpiar-proyecciones-viejas", methods=["POST"])
+@login_required
+def limpiar_proyecciones_viejas():
+    """
+    Borra las estimaciones recurrentes sueltas, sin pagar, de más allá del mes
+    próximo. Son las copias auto-generadas por el horizonte viejo (12 meses) que
+    nadie confirmó. Conservador: solo toca filas que siguen 100% estimadas
+    (monto y fecha estimados), recurrentes, sin plan y no pagadas. No toca nada
+    confirmado, pagado, esporádico ni cuotas de financiación.
+    """
+    db = get_db()
+    hoy = today_ar()
+
+    # Inicio del mes actual + 2 (= todo lo posterior al mes próximo).
+    primer_dia_mes_actual = hoy.replace(day=1)
+    if primer_dia_mes_actual.month == 12:
+        inicio_mes_proximo = primer_dia_mes_actual.replace(year=primer_dia_mes_actual.year + 1, month=1)
+    else:
+        inicio_mes_proximo = primer_dia_mes_actual.replace(month=primer_dia_mes_actual.month + 1)
+    if inicio_mes_proximo.month == 12:
+        inicio_limpieza = inicio_mes_proximo.replace(year=inicio_mes_proximo.year + 1, month=1)
+    else:
+        inicio_limpieza = inicio_mes_proximo.replace(month=inicio_mes_proximo.month + 1)
+
+    a_borrar = db.query(Vencimiento).filter(
+        Vencimiento.pagado.is_(False),
+        Vencimiento.plan_id.is_(None),
+        Vencimiento.es_recurrente.is_(True),
+        Vencimiento.fecha_estimada.is_(True),
+        Vencimiento.monto_estimado.is_(True),
+        Vencimiento.fecha_vencimiento >= inicio_limpieza,
+    ).all()
+
+    n = len(a_borrar)
+    for v in a_borrar:
+        db.delete(v)
+    db.commit()
+    _log_actividad(db, "limpiar", None, None, f"Limpió {n} proyecciones estimadas viejas")
+    if n:
+        flash(f"Listo: borré {n} proyecciones estimadas viejas. El presente quedó prolijo.", "success")
+    else:
+        flash("No había proyecciones viejas para limpiar.", "success")
     return redirect_back("vencimientos.list_view")
 
 
@@ -295,7 +388,7 @@ def nuevo():
         db.commit()
         _log_actividad(db, "crear", v.id, None, f"Cargó: {v.concepto}")
 
-        # Si es recurrente y tiene fecha, generar los 11 meses siguientes (estimados).
+        # Si es recurrente y tiene fecha, anticipar solo el mes próximo (estimado).
         n_horizonte = 0
         if v.es_recurrente and not v.pausado and v.fecha_vencimiento:
             from services.generador import generar_horizonte_desde
@@ -305,7 +398,7 @@ def nuevo():
                 print(f"[nuevo] No se pudo generar horizonte para {v.id}: {e}", flush=True)
 
         if n_horizonte:
-            flash(f"Vencimiento creado + {n_horizonte} meses estimados cargados a futuro.", "success")
+            flash("Vencimiento creado. Dejé el mes próximo como estimación (lo ves en la solapa Estimaciones).", "success")
         else:
             flash("Vencimiento creado.", "success")
         return redirect_back("vencimientos.list_view")

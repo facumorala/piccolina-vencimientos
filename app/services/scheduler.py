@@ -71,7 +71,7 @@ def start_scheduler():
 # ─── Jobs ─────────────────────────────────────────────────────────────────────
 
 def _job_generador_mensual():
-    """Día 1 de cada mes — completa el horizonte rodante de 12 meses."""
+    """Día 1 de cada mes — asegura que cada recurrente tenga el mes actual + el próximo."""
     try:
         from services.generador import asegurar_horizonte_completo
         n = asegurar_horizonte_completo()

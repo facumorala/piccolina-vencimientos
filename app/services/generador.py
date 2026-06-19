@@ -1,15 +1,17 @@
 """
-Generador de vencimientos recurrentes con horizonte rodante de 12 meses.
+Generador de vencimientos recurrentes con horizonte rodante CORTO (1 mes).
 
-Lógica:
-- Cada vencimiento recurrente tiene que tener "hijos" estimados cargados hasta
-  12 meses adelante.
-- Cuando Facu crea un vencimiento nuevo recurrente, se disparan inmediatamente
-  los 11 hijos siguientes (mes a mes). Todos con monto_estimado=True y
-  fecha_estimada=True, para que después los confirme manualmente uno por uno.
+Lógica (rediseño 18-jun-2026 — "presente prolijo"):
+- Cada vencimiento recurrente solo se anticipa UN mes: el próximo.
+- Cuando Facu crea un vencimiento nuevo recurrente, se dispara solo la copia
+  del mes siguiente, con monto_estimado=True y fecha_estimada=True, para que
+  después la confirme. Esa copia vive en la solapa "Estimaciones".
 - El job mensual del día 1 corre `asegurar_horizonte_completo()` para
-  rellenar cualquier mes que falte (por si algún tipo nuevo se cargó sin
-  generar, o si el horizonte de 12 meses corre con el tiempo).
+  asegurar que existan el mes actual y el próximo (salvavidas).
+
+Por qué tan corto: el horizonte largo (12 meses) inflaba la "deuda pendiente"
+y multiplicaba x12 cada cosa cargada. Si en el futuro se quiere proyección
+anual para análisis de negocio, basta con subir `HORIZONTE_MESES`.
 
 Reglas:
 - No duplica: si ya hay un vencimiento del mismo categoria+tipo (sin plan) en
@@ -29,7 +31,9 @@ from models import Vencimiento
 from services.periodo import primer_dia, ultimo_dia
 
 
-HORIZONTE_MESES = 12
+# Horizonte rodante: cuántos meses (contando el actual) mantenemos cargados.
+# 2 = mes actual + mes próximo. El "mes próximo" es lo que se ve en Estimaciones.
+HORIZONTE_MESES = 2
 
 MESES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -163,6 +167,8 @@ def generar_horizonte_desde(vencimiento_id: int, meses_adelante: int = HORIZONTE
     """
     Dispara la creación de copias estimadas para los próximos `meses_adelante`
     meses a partir del vencimiento `vencimiento_id` (el origen NO se cuenta).
+    Con el horizonte corto (HORIZONTE_MESES=2) esto es una sola copia: el mes
+    siguiente.
 
     Se llama desde `routes/vencimientos.py::nuevo()` cuando Facu carga un
     vencimiento recurrente nuevo.

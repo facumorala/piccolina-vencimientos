@@ -112,7 +112,23 @@ def dashboard():
     )
 
     # ── PENDIENTE / VENCIDO / ESTA SEMANA ────────────────────────────────────
-    pendiente_total = _sum_monto(q_base.filter(Vencimiento.pagado.is_(False)))
+    # "Pendiente" = lo realmente exigible AHORA: lo no pagado que vence hasta
+    # fin del mes en curso (incluye atrasado de meses anteriores + lo de este
+    # mes) + lo que todavía no tiene fecha. NO suma los meses futuros estimados
+    # (eso es proyección, vive en la solapa Estimaciones). Siempre usa el mes
+    # real de hoy, aunque se esté viendo otro mes con ?mes=.
+    primer_dia_actual = hoy.replace(day=1)
+    if primer_dia_actual.month == 12:
+        fin_mes_actual = primer_dia_actual.replace(year=primer_dia_actual.year + 1, month=1)
+    else:
+        fin_mes_actual = primer_dia_actual.replace(month=primer_dia_actual.month + 1)
+    pendiente_total = _sum_monto(
+        q_base.filter(
+            Vencimiento.pagado.is_(False),
+            (Vencimiento.fecha_vencimiento < fin_mes_actual)
+            | (Vencimiento.fecha_vencimiento.is_(None)),
+        )
+    )
     vencido_total = _sum_monto(
         q_base.filter(
             Vencimiento.pagado.is_(False),
@@ -181,9 +197,13 @@ def dashboard():
         })
 
     # ── DATOS POR COMPLETAR (estimados + faltantes) ──────────────────────────
+    # Solo del presente (vencido + este mes + sin fecha). Las estimaciones del
+    # mes próximo no cuentan acá: viven en la solapa Estimaciones del listado.
+    _en_presente = (Vencimiento.fecha_vencimiento < fin_mes_actual) | (Vencimiento.fecha_vencimiento.is_(None))
     datos_faltantes = (
         q_base.filter(
             Vencimiento.pagado.is_(False),
+            _en_presente,
             (Vencimiento.monto_estimado.is_(True)) |
             (Vencimiento.fecha_estimada.is_(True)) |
             (Vencimiento.monto.is_(None)) |
@@ -196,6 +216,7 @@ def dashboard():
     datos_faltantes_total = (
         q_base.filter(
             Vencimiento.pagado.is_(False),
+            _en_presente,
             (Vencimiento.monto_estimado.is_(True)) |
             (Vencimiento.fecha_estimada.is_(True)) |
             (Vencimiento.monto.is_(None)) |

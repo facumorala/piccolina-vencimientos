@@ -3,27 +3,50 @@
 
 {% block content %}
   {# ── Page header ─────────────────────────────────────────────────────── #}
-  <section class="pt-12 pb-6">
+  <section class="pt-12 pb-2">
     <div class="flex items-end justify-between flex-wrap gap-4">
       <div>
         <div class="smcaps mb-2" style="color: var(--brand);">· VENCIMIENTOS ·</div>
-        <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Listado</h1>
+        <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">
+          {% if vista == 'estimaciones' %}Estimaciones{% else %}Listado{% endif %}
+        </h1>
       </div>
       <div class="flex gap-2 flex-wrap">
-        <form method="post" action="{{ url_for('vencimientos.generar_mes_proximo') }}"
-              onsubmit="return confirm('¿Completar el horizonte de los próximos 12 meses ahora?');">
-          <button class="btn btn-ghost" type="submit" title="Crea copias estimadas hasta cubrir 12 meses adelante para todos los recurrentes">
-            ⟳ Generar próximos 12 meses
+        {% if vista == 'estimaciones' and n_proyecciones_viejas %}
+          <button class="btn btn-ghost" type="button" onclick="abrirModalLimpiar()"
+                  title="Borra proyecciones estimadas de meses lejanos que sobraron del sistema viejo">
+            🧹 Limpiar proyecciones viejas ({{ n_proyecciones_viejas }})
           </button>
-        </form>
+        {% endif %}
         <button class="btn btn-primary" type="button"
                 onclick="abrirVtoNuevo()">+ Nuevo vencimiento</button>
       </div>
     </div>
+
+    {# ── Solapas: Vencimientos (presente) / Estimaciones (lo que viene) ──── #}
+    <div class="solapas">
+      <a href="{{ url_for('vencimientos.list_view') }}"
+         class="solapa {{ 'solapa-activa' if vista != 'estimaciones' else '' }}">
+        Vencimientos
+      </a>
+      <a href="{{ url_for('vencimientos.list_view', vista='estimaciones') }}"
+         class="solapa {{ 'solapa-activa' if vista == 'estimaciones' else '' }}">
+        Estimaciones{% if n_estimaciones %} <span class="solapa-badge">{{ n_estimaciones }}</span>{% endif %}
+      </a>
+    </div>
   </section>
 
-  {# ── Banner global: estimados del mes en curso ───────────────────────── #}
-  {% if estimados_mes %}
+  {% if vista == 'estimaciones' %}
+    {# Ayuda contextual de la solapa Estimaciones #}
+    <p class="text-[13px] mb-4" style="color: var(--ink-2); max-width: 640px;">
+      Esto es <strong>lo que viene el mes próximo</strong> — todavía sin confirmar.
+      Cuando llegue la factura real, tocá <strong>Confirmar</strong> y se carga con el
+      monto y la fecha exactos. No cuenta como deuda hasta que sea del mes en curso.
+    </p>
+  {% endif %}
+
+  {# ── Banner global: estimados del mes en curso (solo en la solapa Vencimientos) ── #}
+  {% if vista != 'estimaciones' and estimados_mes %}
     <div class="banner-estimados" onclick="abrirModalEstimadosMes()" role="button" tabindex="0"
          onkeypress="if(event.key==='Enter'){abrirModalEstimadosMes()}"
          title="Click para revisar y confirmar uno por uno">
@@ -38,10 +61,10 @@
     </div>
   {% endif %}
 
-  {# ── Filtros ─────────────────────────────────────────────────────────── #}
+  {# ── Filtros (no aplican en la solapa Estimaciones) ──────────────────── #}
   <form id="form-filtros" method="get"
         class="pb-6 border-b"
-        style="border-color: var(--rule);">
+        style="border-color: var(--rule); {% if vista == 'estimaciones' %}display: none;{% endif %}">
 
     {# Fila 1: estado / estimado / categorías #}
     <div class="flex flex-wrap items-center gap-3 mb-3">
@@ -212,7 +235,14 @@
 
   {# ── Listado agrupado ────────────────────────────────────────────────── #}
   {% if not agrupados %}
-    <p class="pt-8" style="color: var(--ink-3);">No hay vencimientos con estos filtros.</p>
+    {% if vista == 'estimaciones' %}
+      <p class="pt-8" style="color: var(--ink-3);">
+        No hay nada estimado para el mes próximo. Todo lo que viene ya está confirmado
+        o todavía no se generó.
+      </p>
+    {% else %}
+      <p class="pt-8" style="color: var(--ink-3);">No hay vencimientos con estos filtros.</p>
+    {% endif %}
   {% endif %}
 
   {% for cat in categorias %}
@@ -282,7 +312,7 @@
                   'pagado': v.pagado,
                 } | tojson %}
                 {% set es_estimado = (v.monto_estimado or v.fecha_estimada) and not v.pagado %}
-                <tr class="row-{{ semaforo_clase }}{% if es_estimado %} row-estimado{% endif %}">
+                <tr class="row-{{ semaforo_clase }}{% if es_estimado and vista != 'estimaciones' %} row-estimado{% endif %}">
                   <td>
                     <a href="#" onclick='abrirVtoEditar({{ data_vto }}); return false;'
                        style="color: var(--ink); text-decoration: none; font-weight: 500;">
@@ -321,7 +351,11 @@
                     {% endif %}
                   </td>
                   <td style="text-align: right;">
-                    {% if v.pagado %}
+                    {% if vista == 'estimaciones' %}
+                      <button class="btn btn-primary" style="padding: 5px 14px; font-size: 11px;"
+                              onclick='abrirVtoEditar({{ data_vto }}, true)'
+                              title="Cargar el monto y la fecha reales y pasarlo a Vencimientos">Confirmar</button>
+                    {% elif v.pagado %}
                       <button class="btn btn-ghost" style="padding: 5px 12px; font-size: 11px;"
                               onclick='abrirPopoverEditarPago({{ v.id }})'>Editar pago</button>
                     {% else %}
@@ -725,7 +759,53 @@
     </div>
   </div>
 
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Limpiar proyecciones viejas                                    #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-limpiar" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 460px;">
+      <h2 class="huge mb-3" style="font-size: 22px;">Limpiar proyecciones viejas</h2>
+      <p class="text-[13px] mb-3" style="color: var(--ink-2);">
+        Se van a borrar <strong>{{ n_proyecciones_viejas }}</strong>
+        {{ 'proyecciones estimadas' if n_proyecciones_viejas != 1 else 'proyección estimada' }}
+        de meses lejanos (más allá del mes próximo). Son copias que generó el sistema
+        viejo y que nadie confirmó.
+      </p>
+      <p class="text-[12px] mb-4" style="color: var(--ink-3);">
+        No toca nada confirmado, pagado, ni cuotas de financiación. Solo limpia las
+        estimaciones sueltas a futuro para dejar el presente prolijo.
+      </p>
+      <form method="post" action="{{ url_for('vencimientos.limpiar_proyecciones_viejas') }}">
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-limpiar')">Cancelar</button>
+          <button class="btn btn-plum" type="submit">Sí, borrar {{ n_proyecciones_viejas }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <style>
+    /* Solapas Vencimientos / Estimaciones */
+    .solapas {
+      display: flex; gap: 4px; margin-top: 18px;
+      border-bottom: 2px solid var(--rule);
+    }
+    .solapa {
+      padding: 10px 18px; font-size: 14px; font-weight: 600;
+      color: var(--ink-3); text-decoration: none;
+      border-bottom: 3px solid transparent; margin-bottom: -2px;
+      transition: color 150ms, border-color 150ms;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .solapa:hover { color: var(--ink); }
+    .solapa-activa { color: var(--brand); border-bottom-color: var(--brand); }
+    .solapa-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 20px; height: 20px; padding: 0 6px;
+      background: var(--brand); color: white;
+      border-radius: 999px; font-size: 11px; font-weight: 700;
+    }
+
     .btn-ficha {
       display: inline-block; padding: 0 4px; margin-left: 4px;
       background: transparent; border: 0; cursor: pointer;
@@ -929,12 +1009,16 @@
     }
 
     // ── Modal: editar vencimiento (se llena con los datos del row) ────
+    // modoConfirmar=true viene de la solapa Estimaciones: cambia el título y
+    // pone el foco en el monto para revisar el importe antes de "graduar" la
+    // estimación a vencimiento real.
     let _editarId = null;
-    function abrirVtoEditar(v) {
+    function abrirVtoEditar(v, modoConfirmar) {
       const form = document.getElementById('form-vto');
       form.reset();
       form.action = `/vencimientos/${v.id}/editar`;
-      document.getElementById('modal-vto-titulo').textContent = 'Editar: ' + v.concepto;
+      document.getElementById('modal-vto-titulo').textContent =
+        (modoConfirmar ? 'Confirmar: ' : 'Editar: ') + v.concepto;
       form.categoria.value = v.categoria;
       form.tipo.value = v.tipo;
       form.concepto.value = v.concepto;
@@ -956,7 +1040,16 @@
       _editarEsRecurrente = v.es_recurrente;
       _editarConcepto = v.concepto;
       abrirModal('modal-vto');
+      // En modo confirmar: foco + selección del monto para revisarlo de una.
+      if (modoConfirmar) {
+        setTimeout(() => {
+          if (form.monto) { form.monto.focus(); form.monto.select(); }
+        }, 60);
+      }
     }
+
+    // ── Modal: limpiar proyecciones viejas ─────────────────────────────
+    function abrirModalLimpiar() { abrirModal('modal-limpiar'); }
 
     // ── Selector estructurado de período ───────────────────────────────
     const _MESES_ES_LARGO = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',

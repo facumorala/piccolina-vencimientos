@@ -30,7 +30,7 @@
 
   {# ── KPI strip: 4 KPIs clickeables ──────────────────────────────────── #}
   {% set kpis = [
-    {'eyebrow': 'PENDIENTE', 'value_html': pendiente_total | money, 'hint': 'sin pagar', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
+    {'eyebrow': 'PENDIENTE', 'value_html': pendiente_total | money, 'hint': 'vencido + este mes', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
     {'eyebrow': 'VENCIDO',   'value_html': '<span style="color: #8B1B1B;">' ~ (vencido_total | money) ~ '</span>', 'hint': 'pago atrasado', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
     {'eyebrow': 'ESTA SEMANA', 'value_html': esta_semana | money, 'hint': 'próximos 7 días', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
     {'eyebrow': 'DATOS POR COMPLETAR', 'value_html': datos_faltantes_total | string, 'hint': 'estimados o faltantes', 'href': url_for('vencimientos.list_view', estimado='si')},
