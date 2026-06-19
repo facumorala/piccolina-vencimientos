@@ -18,22 +18,35 @@
             🧹 Limpiar proyecciones viejas ({{ n_proyecciones_viejas }})
           </button>
         {% endif %}
+        {# Mostrar / ocultar todo lo estimado (pestaña futura + avisos + etiquetas) #}
+        {% if mostrar_est %}
+          <a class="btn btn-ghost" href="{{ url_for('vencimientos.list_view') }}">
+            Ocultar estimaciones
+          </a>
+        {% else %}
+          <a class="btn btn-ghost" href="{{ url_for('vencimientos.list_view', est='1') }}"
+             title="Ver lo que viene el mes próximo + los montos/fechas estimados del mes">
+            👁 Mostrar estimaciones{% if n_estimaciones %} ({{ n_estimaciones }}){% endif %}
+          </a>
+        {% endif %}
         <button class="btn btn-primary" type="button"
                 onclick="abrirVtoNuevo()">+ Nuevo vencimiento</button>
       </div>
     </div>
 
-    {# ── Solapas: Vencimientos (presente) / Estimaciones (lo que viene) ──── #}
-    <div class="solapas">
-      <a href="{{ url_for('vencimientos.list_view') }}"
-         class="solapa {{ 'solapa-activa' if vista != 'estimaciones' else '' }}">
-        Vencimientos
-      </a>
-      <a href="{{ url_for('vencimientos.list_view', vista='estimaciones') }}"
-         class="solapa {{ 'solapa-activa' if vista == 'estimaciones' else '' }}">
-        Estimaciones{% if n_estimaciones %} <span class="solapa-badge">{{ n_estimaciones }}</span>{% endif %}
-      </a>
-    </div>
+    {# ── Solapas: solo visibles con las estimaciones reveladas ───────────── #}
+    {% if mostrar_est %}
+      <div class="solapas">
+        <a href="{{ url_for('vencimientos.list_view', est='1') }}"
+           class="solapa {{ 'solapa-activa' if vista != 'estimaciones' else '' }}">
+          Vencimientos
+        </a>
+        <a href="{{ url_for('vencimientos.list_view', vista='estimaciones', est='1') }}"
+           class="solapa {{ 'solapa-activa' if vista == 'estimaciones' else '' }}">
+          Estimaciones{% if n_estimaciones %} <span class="solapa-badge">{{ n_estimaciones }}</span>{% endif %}
+        </a>
+      </div>
+    {% endif %}
   </section>
 
   {% if vista == 'estimaciones' %}
@@ -45,8 +58,8 @@
     </p>
   {% endif %}
 
-  {# ── Banner global: estimados del mes en curso (solo en la solapa Vencimientos) ── #}
-  {% if vista != 'estimaciones' and estimados_mes %}
+  {# ── Banner global: estimados del mes en curso (solo con estimaciones reveladas) ── #}
+  {% if mostrar_est and vista != 'estimaciones' and estimados_mes %}
     <div class="banner-estimados" onclick="abrirModalEstimadosMes()" role="button" tabindex="0"
          onkeypress="if(event.key==='Enter'){abrirModalEstimadosMes()}"
          title="Click para revisar y confirmar uno por uno">
@@ -66,6 +79,9 @@
         class="pb-6 border-b"
         style="border-color: var(--rule); {% if vista == 'estimaciones' %}display: none;{% endif %}">
 
+    {# Conserva el modo "mostrar estimaciones" al filtrar #}
+    {% if mostrar_est %}<input type="hidden" name="est" value="1">{% endif %}
+
     {# Fila 1: estado / estimado / categorías #}
     <div class="flex flex-wrap items-center gap-3 mb-3">
       <select name="estado" class="input-box" style="width: auto;">
@@ -74,11 +90,13 @@
         <option value="en_plan"   {% if f_estado == 'en_plan' %}selected{% endif %}>EN PLAN</option>
         <option value="todos"     {% if f_estado == 'todos' %}selected{% endif %}>Todos</option>
       </select>
-      <select name="estimado" class="input-box" style="width: auto;">
-        <option value=""   {% if f_estimado == '' %}selected{% endif %}>Estimado · cualquiera</option>
-        <option value="si" {% if f_estimado == 'si' %}selected{% endif %}>Solo estimados</option>
-        <option value="no" {% if f_estimado == 'no' %}selected{% endif %}>Solo confirmados</option>
-      </select>
+      {% if mostrar_est %}
+        <select name="estimado" class="input-box" style="width: auto;">
+          <option value=""   {% if f_estimado == '' %}selected{% endif %}>Estimado · cualquiera</option>
+          <option value="si" {% if f_estimado == 'si' %}selected{% endif %}>Solo estimados</option>
+          <option value="no" {% if f_estimado == 'no' %}selected{% endif %}>Solo confirmados</option>
+        </select>
+      {% endif %}
       <div class="flex flex-wrap gap-3 items-center">
         {% for cat in categorias %}
           <label class="flex items-center gap-1.5 text-[13px]" style="color: var(--ink-2);">
@@ -254,7 +272,7 @@
              style="border-color: var(--ink);">
           <div class="flex items-center gap-3">
             <div class="smcaps" style="color: var(--brand);">· {{ cat | label_categoria }} ·</div>
-            {% if tiene_fechas_estimadas %}
+            {% if mostrar_est and tiene_fechas_estimadas %}
               <button type="button" class="btn-link"
                       style="color: #B85C00; font-size: 11px;"
                       onclick='abrirModalFechas("{{ cat }}", {{ fechas_estimadas_por_cat[cat] | length }})'>
@@ -312,7 +330,7 @@
                   'pagado': v.pagado,
                 } | tojson %}
                 {% set es_estimado = (v.monto_estimado or v.fecha_estimada) and not v.pagado %}
-                <tr class="row-{{ semaforo_clase }}{% if es_estimado and vista != 'estimaciones' %} row-estimado{% endif %}">
+                <tr class="row-{{ semaforo_clase }}{% if es_estimado and vista != 'estimaciones' and mostrar_est %} row-estimado{% endif %}">
                   <td>
                     <a href="#" onclick='abrirVtoEditar({{ data_vto }}); return false;'
                        style="color: var(--ink); text-decoration: none; font-weight: 500;">
@@ -331,7 +349,7 @@
                   <td style="color: var(--ink-2);">{{ v.periodo_facturado or '—' }}</td>
                   <td>
                     <span class="num">{{ v.fecha_vencimiento | fecha }}</span>
-                    {% if v.fecha_estimada %}<span class="tag-estimado">(estimada)</span>{% endif %}
+                    {% if mostrar_est and v.fecha_estimada %}<span class="tag-estimado">(estimada)</span>{% endif %}
                   </td>
                   <td>
                     <span class="sem sem-{{ semaforo_clase }}">
@@ -341,7 +359,7 @@
                   <td class="num" style="color: var(--ink-2);">{{ v.fecha_pago | fecha }}</td>
                   <td class="num" style="text-align: right;">
                     {{ v.monto | money }}
-                    {% if v.monto_estimado %}<span class="tag-estimado">estimado</span>{% endif %}
+                    {% if mostrar_est and v.monto_estimado %}<span class="tag-estimado">estimado</span>{% endif %}
                     {% if v.monto_intereses %}
                       <div class="tag-intereses"
                            onclick='abrirIntereses({{ v.id }}, "{{ v.concepto|replace("\"", "")|e }}", "{{ v.monto_intereses }}", {{ (v.link_intereses or "") | tojson }}); event.stopPropagation();'

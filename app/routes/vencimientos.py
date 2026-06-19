@@ -43,6 +43,16 @@ def list_view():
     if vista not in ("vencimientos", "estimaciones"):
         vista = "vencimientos"
 
+    # ── ¿Mostrar lo estimado? Por defecto NO: la pantalla arranca limpia con
+    # solo lo confirmado del presente. El botón "Mostrar estimaciones" recarga
+    # con ?est=1 y recién ahí aparecen la solapa de lo que viene, el banner
+    # naranja del mes y las etiquetas de "estimado". Decisión de Facu (19-jun):
+    # ver todo junto lo confunde.
+    mostrar_est = request.args.get("est") == "1"
+    if not mostrar_est:
+        # Sin estimaciones visibles no se puede entrar a esa solapa.
+        vista = "vencimientos"
+
     # Inicio del mes próximo (frontera entre "presente" y "estimaciones").
     primer_dia_mes_actual = hoy.replace(day=1)
     if primer_dia_mes_actual.month == 12:
@@ -222,6 +232,7 @@ def list_view():
     return render_template(
         "vencimientos/list.html",
         vista=vista,
+        mostrar_est=mostrar_est,
         n_estimaciones=n_estimaciones,
         n_proyecciones_viejas=n_proyecciones_viejas,
         agrupados=agrupados,
