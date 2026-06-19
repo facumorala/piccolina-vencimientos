@@ -35,6 +35,9 @@ def create_app() -> Flask:
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+        # Límite de subida (comprobantes de pago: fotos/PDF). 16 MB deja margen
+        # sobre el tope de 15 MB que valida vencimientos.py con mensaje amable.
+        MAX_CONTENT_LENGTH=16 * 1024 * 1024,
     )
 
     # ── Extensiones ─────────────────────────────────────────────────────────

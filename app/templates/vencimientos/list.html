@@ -7,82 +7,23 @@
     <div class="flex items-end justify-between flex-wrap gap-4">
       <div>
         <div class="smcaps mb-2" style="color: var(--brand);">· VENCIMIENTOS ·</div>
-        <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">
-          {% if vista == 'estimaciones' %}Estimaciones{% else %}Listado{% endif %}
-        </h1>
+        <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Listado</h1>
       </div>
       <div class="flex gap-2 flex-wrap">
-        {% if vista == 'estimaciones' and n_proyecciones_viejas %}
-          <button class="btn btn-ghost" type="button" onclick="abrirModalLimpiar()"
-                  title="Borra proyecciones estimadas de meses lejanos que sobraron del sistema viejo">
-            🧹 Limpiar proyecciones viejas ({{ n_proyecciones_viejas }})
-          </button>
-        {% endif %}
-        {# Mostrar / ocultar todo lo estimado (pestaña futura + avisos + etiquetas) #}
-        {% if mostrar_est %}
-          <a class="btn btn-ghost" href="{{ url_for('vencimientos.list_view') }}">
-            Ocultar estimaciones
-          </a>
-        {% else %}
-          <a class="btn btn-ghost" href="{{ url_for('vencimientos.list_view', est='1') }}"
-             title="Ver lo que viene el mes próximo + los montos/fechas estimados del mes">
-            👁 Mostrar estimaciones{% if n_estimaciones %} ({{ n_estimaciones }}){% endif %}
-          </a>
-        {% endif %}
+        <button class="btn btn-ghost" type="button" onclick="abrirModal('modal-repetir')"
+                title="Traer los vencimientos del mes pasado a este mes">
+          🔁 Repetir mes anterior
+        </button>
         <button class="btn btn-primary" type="button"
                 onclick="abrirVtoNuevo()">+ Nuevo vencimiento</button>
       </div>
     </div>
-
-    {# ── Solapas: solo visibles con las estimaciones reveladas ───────────── #}
-    {% if mostrar_est %}
-      <div class="solapas">
-        <a href="{{ url_for('vencimientos.list_view', est='1') }}"
-           class="solapa {{ 'solapa-activa' if vista != 'estimaciones' else '' }}">
-          Vencimientos
-        </a>
-        <a href="{{ url_for('vencimientos.list_view', vista='estimaciones', est='1') }}"
-           class="solapa {{ 'solapa-activa' if vista == 'estimaciones' else '' }}">
-          Estimaciones{% if n_estimaciones %} <span class="solapa-badge">{{ n_estimaciones }}</span>{% endif %}
-        </a>
-      </div>
-    {% endif %}
   </section>
 
-  {% if vista == 'estimaciones' %}
-    {# Ayuda contextual de la solapa Estimaciones #}
-    <p class="text-[13px] mb-4" style="color: var(--ink-2); max-width: 640px;">
-      Esto es <strong>lo que viene el mes próximo</strong> — todavía sin confirmar.
-      Cuando llegue la factura real, tocá <strong>Confirmar</strong> y se carga con el
-      monto y la fecha exactos. No cuenta como deuda hasta que sea del mes en curso.
-    </p>
-  {% endif %}
+  {# ── Filtros ─────────────────────────────────────────────────────────── #}
+  <form id="form-filtros" method="get" class="pb-6 border-b" style="border-color: var(--rule);">
 
-  {# ── Banner global: estimados del mes en curso (solo con estimaciones reveladas) ── #}
-  {% if mostrar_est and vista != 'estimaciones' and estimados_mes %}
-    <div class="banner-estimados" onclick="abrirModalEstimadosMes()" role="button" tabindex="0"
-         onkeypress="if(event.key==='Enter'){abrirModalEstimadosMes()}"
-         title="Click para revisar y confirmar uno por uno">
-      <div class="banner-icono">⚠</div>
-      <div class="banner-texto">
-        <strong>Este mes ({{ nombre_mes_actual }} {{ anio_mes_actual }})</strong> hay
-        <strong>{{ estimados_mes|length }}</strong>
-        vencimiento{{ 's' if estimados_mes|length > 1 else '' }} con fecha o monto estimado
-        sin confirmar.
-      </div>
-      <div class="banner-cta">Revisar →</div>
-    </div>
-  {% endif %}
-
-  {# ── Filtros (no aplican en la solapa Estimaciones) ──────────────────── #}
-  <form id="form-filtros" method="get"
-        class="pb-6 border-b"
-        style="border-color: var(--rule); {% if vista == 'estimaciones' %}display: none;{% endif %}">
-
-    {# Conserva el modo "mostrar estimaciones" al filtrar #}
-    {% if mostrar_est %}<input type="hidden" name="est" value="1">{% endif %}
-
-    {# Fila 1: estado / estimado / categorías #}
+    {# Fila 1: estado / categorías #}
     <div class="flex flex-wrap items-center gap-3 mb-3">
       <select name="estado" class="input-box" style="width: auto;">
         <option value="no_pagado" {% if f_estado == 'no_pagado' %}selected{% endif %}>No pagado</option>
@@ -90,13 +31,6 @@
         <option value="en_plan"   {% if f_estado == 'en_plan' %}selected{% endif %}>EN PLAN</option>
         <option value="todos"     {% if f_estado == 'todos' %}selected{% endif %}>Todos</option>
       </select>
-      {% if mostrar_est %}
-        <select name="estimado" class="input-box" style="width: auto;">
-          <option value=""   {% if f_estimado == '' %}selected{% endif %}>Estimado · cualquiera</option>
-          <option value="si" {% if f_estimado == 'si' %}selected{% endif %}>Solo estimados</option>
-          <option value="no" {% if f_estimado == 'no' %}selected{% endif %}>Solo confirmados</option>
-        </select>
-      {% endif %}
       <div class="flex flex-wrap gap-3 items-center">
         {% for cat in categorias %}
           <label class="flex items-center gap-1.5 text-[13px]" style="color: var(--ink-2);">
@@ -253,33 +187,16 @@
 
   {# ── Listado agrupado ────────────────────────────────────────────────── #}
   {% if not agrupados %}
-    {% if vista == 'estimaciones' %}
-      <p class="pt-8" style="color: var(--ink-3);">
-        No hay nada estimado para el mes próximo. Todo lo que viene ya está confirmado
-        o todavía no se generó.
-      </p>
-    {% else %}
-      <p class="pt-8" style="color: var(--ink-3);">No hay vencimientos con estos filtros.</p>
-    {% endif %}
+    <p class="pt-8" style="color: var(--ink-3);">No hay vencimientos con estos filtros.</p>
   {% endif %}
 
   {% for cat in categorias %}
     {% if cat in agrupados %}
       {% set sub = subtotales[cat] %}
-      {% set tiene_fechas_estimadas = cat in fechas_estimadas_por_cat %}
       <section class="pt-8">
         <div class="flex items-center justify-between mb-3 pb-2 border-b flex-wrap gap-2"
              style="border-color: var(--ink);">
-          <div class="flex items-center gap-3">
-            <div class="smcaps" style="color: var(--brand);">· {{ cat | label_categoria }} ·</div>
-            {% if mostrar_est and tiene_fechas_estimadas %}
-              <button type="button" class="btn-link"
-                      style="color: #B85C00; font-size: 11px;"
-                      onclick='abrirModalFechas("{{ cat }}", {{ fechas_estimadas_por_cat[cat] | length }})'>
-                ⚠ Confirmar {{ fechas_estimadas_por_cat[cat] | length }} fecha{{ 's' if fechas_estimadas_por_cat[cat]|length > 1 else '' }}
-              </button>
-            {% endif %}
-          </div>
+          <div class="smcaps" style="color: var(--brand);">· {{ cat | label_categoria }} ·</div>
           <div class="text-[12px]" style="color: var(--ink-3);">
             Total: <strong style="color: var(--ink);">{{ sub.total | money }}</strong>
             · No pagado: <strong style="color: var(--ink);">{{ sub.no_pagado | money }}</strong>
@@ -314,23 +231,16 @@
                 {% set data_vto = {
                   'id': v.id,
                   'categoria': v.categoria,
-                  'tipo': v.tipo,
+                  'nombre': v.tipo,
                   'concepto': v.concepto,
                   'periodo_facturado': v.periodo_facturado or '',
                   'periodo_desde': v.periodo_desde.isoformat() if v.periodo_desde else '',
                   'periodo_hasta': v.periodo_hasta.isoformat() if v.periodo_hasta else '',
                   'monto': (v.monto | string) if v.monto is not none else '',
-                  'monto_estimado': v.monto_estimado,
-                  'estimado_monto_de': v.estimado_monto_de or '',
                   'fecha_vencimiento': v.fecha_vencimiento.isoformat() if v.fecha_vencimiento else '',
-                  'fecha_estimada': v.fecha_estimada,
-                  'es_recurrente': v.es_recurrente,
-                  'pausado': v.pausado,
                   'notas': v.notas or '',
-                  'pagado': v.pagado,
                 } | tojson %}
-                {% set es_estimado = (v.monto_estimado or v.fecha_estimada) and not v.pagado %}
-                <tr class="row-{{ semaforo_clase }}{% if es_estimado and vista != 'estimaciones' and mostrar_est %} row-estimado{% endif %}">
+                <tr class="row-{{ semaforo_clase }}{% if v.es_repeticion and not v.pagado %} row-repeticion{% endif %}">
                   <td>
                     <a href="#" onclick='abrirVtoEditar({{ data_vto }}); return false;'
                        style="color: var(--ink); text-decoration: none; font-weight: 500;">
@@ -342,15 +252,15 @@
                             title="{{ 'Ver instructivo de ' + v.tipo if v.tipo in tipos_con_ficha else 'Crear instructivo para ' + v.tipo }}">
                       📖
                     </button>
+                    {% if v.es_repeticion and not v.pagado %}
+                      <span class="tag-repeticion">🔁 repetido</span>
+                    {% endif %}
                     {% if v.monto is none or v.fecha_vencimiento is none %}
                       <span class="tag-falta">⚠ falta dato</span>
                     {% endif %}
                   </td>
                   <td style="color: var(--ink-2);">{{ v.periodo_facturado or '—' }}</td>
-                  <td>
-                    <span class="num">{{ v.fecha_vencimiento | fecha }}</span>
-                    {% if mostrar_est and v.fecha_estimada %}<span class="tag-estimado">(estimada)</span>{% endif %}
-                  </td>
+                  <td><span class="num">{{ v.fecha_vencimiento | fecha }}</span></td>
                   <td>
                     <span class="sem sem-{{ semaforo_clase }}">
                       {{ v.fecha_vencimiento | label_estado(v.pagado, v.plan_id is not none and v.plan_cuota_nro is none) }}
@@ -358,23 +268,32 @@
                   </td>
                   <td class="num" style="color: var(--ink-2);">{{ v.fecha_pago | fecha }}</td>
                   <td class="num" style="text-align: right;">
-                    {{ v.monto | money }}
-                    {% if mostrar_est and v.monto_estimado %}<span class="tag-estimado">estimado</span>{% endif %}
                     {% if v.monto_intereses %}
+                      {% set total_fila = (v.monto or 0) + v.monto_intereses %}
+                      <strong>{{ total_fila | money }}</strong>
                       <div class="tag-intereses"
                            onclick='abrirIntereses({{ v.id }}, "{{ v.concepto|replace("\"", "")|e }}", "{{ v.monto_intereses }}", {{ (v.link_intereses or "") | tojson }}); event.stopPropagation();'
                            title="Click para editar los intereses">
-                        + {{ v.monto_intereses | money }} intereses
+                        deuda {{ v.monto | money }} + {{ v.monto_intereses | money }} int.
                       </div>
+                    {% else %}
+                      {{ v.monto | money }}
                     {% endif %}
                   </td>
-                  <td style="text-align: right;">
-                    {% if vista == 'estimaciones' %}
-                      <button class="btn btn-primary" style="padding: 5px 14px; font-size: 11px;"
-                              onclick='abrirVtoEditar({{ data_vto }}, true)'
-                              title="Cargar el monto y la fecha reales y pasarlo a Vencimientos">Confirmar</button>
-                    {% elif v.pagado %}
-                      <button class="btn btn-ghost" style="padding: 5px 12px; font-size: 11px;"
+                  <td style="text-align: right; white-space: nowrap;">
+                    {% if v.pagado %}
+                      {% if v.comprobante_datos %}
+                        <a class="btn-link" style="font-size: 11px; color: #1F6F1F;"
+                           href="{{ url_for('vencimientos.ver_comprobante', vid=v.id) }}" target="_blank"
+                           title="Ver el comprobante adjunto">📎 Ver comprobante</a>
+                        <button class="btn-link" style="display: block; margin: 4px 0 0 auto; font-size: 10.5px; color: var(--ink-3);"
+                                onclick='abrirComprobante({{ v.id }}, "{{ v.concepto|replace("\"", "")|e }}", true)'>Cambiar / quitar</button>
+                      {% else %}
+                        <button class="btn-link" style="font-size: 11px; color: #B85C00;"
+                                onclick='abrirComprobante({{ v.id }}, "{{ v.concepto|replace("\"", "")|e }}", false)'
+                                title="Subir foto o PDF del comprobante">📎 Adjuntar comprobante</button>
+                      {% endif %}
+                      <button class="btn btn-ghost" style="display: block; margin: 6px 0 0 auto; padding: 5px 12px; font-size: 11px;"
                               onclick='abrirPopoverEditarPago({{ v.id }})'>Editar pago</button>
                     {% else %}
                       <button class="btn btn-primary" style="padding: 5px 14px; font-size: 11px;"
@@ -410,11 +329,8 @@
           {% for cat in categorias %}<option value="{{ cat }}">{{ cat | label_categoria }}</option>{% endfor %}
         </select>
 
-        <label>Tipo (ej: IVA, Edenor 1, Alquiler)</label>
-        <input class="input-box" name="tipo" type="text" required>
-
-        <label>Concepto (ej: IIBB nov 2025)</label>
-        <input class="input-box" name="concepto" type="text" required>
+        <label>Nombre (ej: IVA, Ingresos Brutos, Alquiler)</label>
+        <input class="input-box" name="nombre" type="text" required>
 
         <label>Período facturado <span style="color: var(--brand);">*</span></label>
         <p class="text-[11px]" style="color: var(--ink-3); margin-top: -2px; margin-bottom: 6px;">
@@ -504,42 +420,12 @@
 
         <label>Importe</label>
         <input class="input-box" name="monto" type="number" step="0.01" placeholder="$">
-        <label class="flex items-center gap-2 mt-2" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
-          <input type="checkbox" name="monto_estimado"> Importe estimado
-        </label>
-        <p class="text-[11px]" style="color: var(--ink-3); margin-top: 4px; margin-bottom: 4px;">
-          De qué mes/factura se sacó este monto estimado (solo informativo).
-        </p>
-        <input class="input-box" name="estimado_monto_de" type="text" placeholder="ej: 'abril 2026'">
 
         <label>Fecha de vencimiento</label>
         <input class="input-box" name="fecha_vencimiento" type="date">
-        <label class="flex items-center gap-2 mt-2" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
-          <input type="checkbox" name="fecha_estimada"> Fecha estimada
-        </label>
-
-        <label class="flex items-center gap-2 mt-4" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
-          <input type="checkbox" name="esporadico"> Esporádico (no se repite cada mes)
-        </label>
-        <label class="flex items-center gap-2" style="text-transform: none; font-size: 13px; color: var(--ink-2);">
-          <input type="checkbox" name="pausado"> Pausado (no se replica al próximo mes)
-        </label>
 
         <label>Notas</label>
         <textarea class="input-box" name="notas" rows="2"></textarea>
-
-        {# Selector de alcance: solo visible al editar un recurrente #}
-        <div id="bloque-alcance" style="display: none; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule);">
-          <label style="color: var(--brand);">Aplicar cambios a:</label>
-          <select name="alcance" class="input-box">
-            <option value="solo">Solo este vencimiento</option>
-            <option value="futuros">Este y los futuros pendientes</option>
-            <option value="todos">Todos los pendientes (incluye atrasados)</option>
-          </select>
-          <p class="text-[11px] mt-1" style="color: var(--ink-3);">
-            Es un recurrente. Elegí si los cambios se propagan a otros meses.
-          </p>
-        </div>
 
         <div class="modal-actions">
           <button id="btn-eliminar" class="btn btn-plum" type="button" style="display: none;"
@@ -552,21 +438,13 @@
   </div>
 
   {# ──────────────────────────────────────────────────────────────────── #}
-  {# MODAL: Eliminar con alcance                                          #}
+  {# MODAL: Eliminar                                                       #}
   {# ──────────────────────────────────────────────────────────────────── #}
   <div id="modal-eliminar" class="modal-overlay" style="display: none;">
     <div class="modal" style="max-width: 420px;">
       <h2 class="huge mb-3" style="font-size: 22px;">Eliminar vencimiento</h2>
       <p id="modal-eliminar-info" class="mb-4 text-[13px]" style="color: var(--ink-2);"></p>
       <form id="form-eliminar" method="post">
-        <div id="bloque-alcance-eliminar" style="display: none;">
-          <label style="color: var(--brand);">Eliminar:</label>
-          <select name="alcance" class="input-box">
-            <option value="solo">Solo este vencimiento</option>
-            <option value="futuros">Este y los futuros pendientes</option>
-            <option value="todos">Todos los pendientes (incluye atrasados)</option>
-          </select>
-        </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-eliminar')">Cancelar</button>
           <button class="btn btn-plum" type="submit">Confirmar eliminación</button>
@@ -576,12 +454,12 @@
   </div>
 
   {# ──────────────────────────────────────────────────────────────────── #}
-  {# MODAL: Pagar                                                          #}
+  {# MODAL: Pagar (con comprobante opcional)                              #}
   {# ──────────────────────────────────────────────────────────────────── #}
   <div id="modal-pagar" class="modal-overlay" style="display: none;">
-    <div class="modal" style="max-width: 400px;">
+    <div class="modal" style="max-width: 420px;">
       <h2 id="modal-pagar-titulo" class="huge mb-4" style="font-size: 22px;">Pagar</h2>
-      <form id="form-pagar" method="post">
+      <form id="form-pagar" method="post" enctype="multipart/form-data">
         <label>Fecha de pago</label>
         <input class="input-box" name="fecha_pago" type="date" required value="{{ today_ar() | string }}">
 
@@ -594,10 +472,37 @@
           <option value="tarjeta">Tarjeta</option>
         </select>
 
+        <label>Comprobante (foto o PDF) — opcional</label>
+        <input class="input-box" name="comprobante" type="file" accept="image/*,application/pdf">
+        <p class="text-[11px] mt-1" style="color: var(--ink-3);">
+          Sacale una foto al comprobante o subí el PDF. Queda guardado en el historial.
+        </p>
+
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-pagar')">Cancelar</button>
           <button class="btn btn-primary" type="submit">Confirmar pago</button>
         </div>
+      </form>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Adjuntar / cambiar / quitar comprobante (pago ya hecho)       #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-comprobante" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 440px;">
+      <h2 id="modal-comprobante-titulo" class="huge mb-3" style="font-size: 22px;">Comprobante de pago</h2>
+      <form id="form-comprobante" method="post" enctype="multipart/form-data">
+        <label>Elegí la foto o el PDF</label>
+        <input class="input-box" name="comprobante" type="file" accept="image/*,application/pdf" required>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-comprobante')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Guardar comprobante</button>
+        </div>
+      </form>
+      <form id="form-comprobante-quitar" method="post" style="display: none; margin-top: 10px; text-align: right;">
+        <input type="hidden" name="quitar" value="1">
+        <button class="btn-link" type="submit" style="color: #8B1B1B; font-size: 12px;">Quitar comprobante actual</button>
       </form>
     </div>
   </div>
@@ -619,90 +524,23 @@
   </div>
 
   {# ──────────────────────────────────────────────────────────────────── #}
-  {# MODAL: Estimados del mes en curso (banner global)                     #}
+  {# MODAL: Repetir mes anterior                                          #}
   {# ──────────────────────────────────────────────────────────────────── #}
-  <div id="modal-estimados-mes" class="modal-overlay" style="display: none;">
-    <div class="modal">
-      <h2 class="huge mb-2" style="font-size: 22px;">
-        Estimados de {{ nombre_mes_actual }} {{ anio_mes_actual }}
-      </h2>
-      <p class="text-[13px] mb-4" style="color: var(--ink-2);">
-        Tocá cada uno para abrir el detalle completo y confirmar fecha + monto reales.
-        Al guardar con los datos exactos (sin tildar "estimado"), el vencimiento sale de esta lista.
+  <div id="modal-repetir" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 460px;">
+      <h2 class="huge mb-3" style="font-size: 22px;">Repetir mes anterior</h2>
+      <p class="text-[13px] mb-3" style="color: var(--ink-2);">
+        Voy a traer a <strong>este mes</strong> los vencimientos del <strong>mes pasado</strong>,
+        con la fecha corrida un mes y el <strong>importe vacío</strong> para que cargues el real.
       </p>
-      <div style="max-height: 60vh; overflow-y: auto;">
-        {% for v in estimados_mes %}
-          {% set data_vto = {
-            'id': v.id,
-            'categoria': v.categoria,
-            'tipo': v.tipo,
-            'concepto': v.concepto,
-            'periodo_facturado': v.periodo_facturado or '',
-            'monto': (v.monto | string) if v.monto is not none else '',
-            'monto_estimado': v.monto_estimado,
-            'estimado_monto_de': v.estimado_monto_de or '',
-            'fecha_vencimiento': v.fecha_vencimiento.isoformat() if v.fecha_vencimiento else '',
-            'fecha_estimada': v.fecha_estimada,
-            'es_recurrente': v.es_recurrente,
-            'pausado': v.pausado,
-            'notas': v.notas or '',
-            'pagado': v.pagado,
-          } | tojson %}
-          <div class="estimado-fila"
-               onclick='cerrarModal("modal-estimados-mes"); abrirVtoEditar({{ data_vto }});'>
-            <div class="estimado-info">
-              <div class="estimado-concepto">{{ v.concepto }}</div>
-              <div class="estimado-meta">
-                {{ v.categoria | label_categoria }} ·
-                vence {{ v.fecha_vencimiento | fecha }}
-                {% if v.fecha_estimada %}<span class="tag-estimado">fecha estimada</span>{% endif %}
-              </div>
-            </div>
-            <div class="estimado-importe">
-              {{ v.monto | money }}
-              {% if v.monto_estimado %}<span class="tag-estimado">monto estimado</span>{% endif %}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-estimados-mes')">Cerrar</button>
-      </div>
-    </div>
-  </div>
-
-  {# ──────────────────────────────────────────────────────────────────── #}
-  {# MODAL: Confirmar todas las fechas de una categoría                    #}
-  {# ──────────────────────────────────────────────────────────────────── #}
-  <div id="modal-fechas" class="modal-overlay" style="display: none;">
-    <div class="modal">
-      <h2 id="modal-fechas-titulo" class="huge mb-2" style="font-size: 22px;">Confirmar fechas</h2>
-      <p class="text-[13px] mb-4" style="color: var(--ink-2);">
-        Cargá la fecha real de cada vencimiento. Al guardar, se quita la marca de
-        "fecha estimada" y se usa la fecha que pongas.
+      <p class="text-[12px] mb-4" style="color: var(--ink-3);">
+        Van a quedar marcados de un color distinto hasta que los completes o los pagues.
+        No se duplica lo que ya tengas cargado este mes.
       </p>
-      <form method="post" action="{{ url_for('vencimientos.confirmar_fechas') }}">
-        {% for cat, vtos in fechas_estimadas_por_cat.items() %}
-          <div data-cat="{{ cat }}" class="cat-fechas-block" style="display: none;">
-            {% for v in vtos %}
-              <div class="flex items-center justify-between gap-3 py-2 border-b"
-                   style="border-color: var(--rule-2);">
-                <div class="flex-1">
-                  <div style="font-weight: 500;">{{ v.concepto }}</div>
-                  <div class="text-[11px]" style="color: var(--ink-3);">
-                    estimada: {{ v.fecha_vencimiento | fecha }} · {{ v.monto | money }}
-                  </div>
-                </div>
-                <input class="input-box" type="date" name="fecha_{{ v.id }}"
-                       value="{{ v.fecha_vencimiento.isoformat() if v.fecha_vencimiento else '' }}"
-                       style="width: 160px;">
-              </div>
-            {% endfor %}
-          </div>
-        {% endfor %}
+      <form method="post" action="{{ url_for('vencimientos.repetir_mes_anterior') }}">
         <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-fechas')">Cancelar</button>
-          <button class="btn btn-primary" type="submit">Confirmar fechas</button>
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-repetir')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Sí, repetir</button>
         </div>
       </form>
     </div>
@@ -777,53 +615,7 @@
     </div>
   </div>
 
-  {# ──────────────────────────────────────────────────────────────────── #}
-  {# MODAL: Limpiar proyecciones viejas                                    #}
-  {# ──────────────────────────────────────────────────────────────────── #}
-  <div id="modal-limpiar" class="modal-overlay" style="display: none;">
-    <div class="modal" style="max-width: 460px;">
-      <h2 class="huge mb-3" style="font-size: 22px;">Limpiar proyecciones viejas</h2>
-      <p class="text-[13px] mb-3" style="color: var(--ink-2);">
-        Se van a borrar <strong>{{ n_proyecciones_viejas }}</strong>
-        {{ 'proyecciones estimadas' if n_proyecciones_viejas != 1 else 'proyección estimada' }}
-        de meses lejanos (más allá del mes próximo). Son copias que generó el sistema
-        viejo y que nadie confirmó.
-      </p>
-      <p class="text-[12px] mb-4" style="color: var(--ink-3);">
-        No toca nada confirmado, pagado, ni cuotas de financiación. Solo limpia las
-        estimaciones sueltas a futuro para dejar el presente prolijo.
-      </p>
-      <form method="post" action="{{ url_for('vencimientos.limpiar_proyecciones_viejas') }}">
-        <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-limpiar')">Cancelar</button>
-          <button class="btn btn-plum" type="submit">Sí, borrar {{ n_proyecciones_viejas }}</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <style>
-    /* Solapas Vencimientos / Estimaciones */
-    .solapas {
-      display: flex; gap: 4px; margin-top: 18px;
-      border-bottom: 2px solid var(--rule);
-    }
-    .solapa {
-      padding: 10px 18px; font-size: 14px; font-weight: 600;
-      color: var(--ink-3); text-decoration: none;
-      border-bottom: 3px solid transparent; margin-bottom: -2px;
-      transition: color 150ms, border-color 150ms;
-      display: inline-flex; align-items: center; gap: 8px;
-    }
-    .solapa:hover { color: var(--ink); }
-    .solapa-activa { color: var(--brand); border-bottom-color: var(--brand); }
-    .solapa-badge {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-width: 20px; height: 20px; padding: 0 6px;
-      background: var(--brand); color: white;
-      border-radius: 999px; font-size: 11px; font-weight: 700;
-    }
-
     .btn-ficha {
       display: inline-block; padding: 0 4px; margin-left: 4px;
       background: transparent; border: 0; cursor: pointer;
@@ -853,65 +645,23 @@
       padding: 16px 18px; background: white;
       border: 1px solid var(--rule); border-radius: 10px;
     }
-    .resumen-bloque {
-      display: flex; flex-direction: column; gap: 4px;
-    }
+    .resumen-bloque { display: flex; flex-direction: column; gap: 4px; }
     .resumen-label {
       font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
       color: var(--ink-3); font-weight: 600;
     }
-    .resumen-valor {
-      font-size: 22px; font-weight: 700; color: var(--ink);
-    }
-    .resumen-sub {
-      font-size: 11px; font-style: italic;
-    }
+    .resumen-valor { font-size: 22px; font-weight: 700; color: var(--ink); }
+    .resumen-sub { font-size: 11px; font-style: italic; }
 
-    /* Banner global de estimados del mes en curso */
-    .banner-estimados {
-      display: flex; align-items: center; gap: 14px;
-      margin-top: 18px; padding: 14px 18px;
-      background: #FFF4E0; border: 1px solid #E8B86A;
-      border-left: 5px solid #B85C00; border-radius: 8px;
-      cursor: pointer; transition: background 150ms, transform 100ms;
+    /* Fila repetida del mes anterior (color BIEN diferenciado: violeta) */
+    .row-repeticion {
+      background: linear-gradient(to right, #EFE9FB 0, #EFE9FB 4px, #F8F5FE 4px) !important;
     }
-    .banner-estimados:hover { background: #FFE9C2; }
-    .banner-estimados:active { transform: scale(0.998); }
-    .banner-icono {
-      font-size: 24px; color: #B85C00; flex-shrink: 0;
-    }
-    .banner-texto {
-      flex: 1; font-size: 14px; color: var(--ink); line-height: 1.4;
-    }
-    .banner-texto strong { color: #6B3100; }
-    .banner-cta {
-      flex-shrink: 0; font-weight: 600; color: #B85C00;
-      font-size: 13px; padding: 4px 10px;
-    }
-
-    /* Fila marcada como estimada (monto o fecha) */
-    .row-estimado td:first-child {
-      box-shadow: inset 3px 0 0 #E8B86A;
-    }
-    .row-estimado {
-      background: linear-gradient(to right, #FFFAEF 0, #FFFAEF 4px, transparent 4px) !important;
-    }
-
-    /* Filas del modal de estimados del mes */
-    .estimado-fila {
-      display: flex; align-items: center; gap: 12px;
-      padding: 12px 4px; border-bottom: 1px solid var(--rule-2);
-      cursor: pointer; transition: background 120ms;
-    }
-    .estimado-fila:hover { background: #FAF7F0; }
-    .estimado-info { flex: 1; min-width: 0; }
-    .estimado-concepto { font-weight: 500; color: var(--ink); }
-    .estimado-meta {
-      font-size: 11px; color: var(--ink-3); margin-top: 2px;
-    }
-    .estimado-importe {
-      font-variant-numeric: tabular-nums; font-weight: 600;
-      color: var(--ink); text-align: right; white-space: nowrap;
+    .row-repeticion td:first-child { box-shadow: inset 4px 0 0 #6D28D9; }
+    .tag-repeticion {
+      display: inline-block; margin-left: 6px; padding: 2px 8px;
+      background: #6D28D9; color: white; border-radius: 999px;
+      font-size: 10.5px; font-weight: 700; vertical-align: middle;
     }
 
     /* Badge de intereses en cada fila */
@@ -966,7 +716,6 @@
           vacia.style.display = 'block';
           return;
         }
-        // Renderizar contenido
         document.getElementById('ficha-titulo').textContent = data.titulo;
         document.getElementById('ficha-categoria').textContent = CAT_LABEL[data.categoria] || data.categoria;
         const tipoSec = document.getElementById('ficha-tipo-secundario');
@@ -976,7 +725,6 @@
         } else {
           tipoSec.style.display = 'none';
         }
-        // Bloques
         const cont = document.getElementById('ficha-bloques');
         cont.innerHTML = '';
         let tieneAlgo = false;
@@ -985,8 +733,7 @@
             tieneAlgo = true;
             const div = document.createElement('div');
             div.className = 'ficha-bloque-modal';
-            div.innerHTML =
-              '<div class="label"></div><div class="valor"></div>';
+            div.innerHTML = '<div class="label"></div><div class="valor"></div>';
             div.querySelector('.label').textContent = FICHA_LABELS[key];
             div.querySelector('.valor').textContent = data[key];
             cont.appendChild(div);
@@ -996,7 +743,6 @@
           cont.innerHTML = '<p class="text-[13px]" style="color: var(--ink-3); margin-top: 8px;">' +
             'Esta ficha está creada pero los casilleros están vacíos. Tocá <em>Editar</em> para completarla.</p>';
         }
-        // Footer
         let foot = '';
         if (data.actualizado_en) foot = 'Actualizada el ' + data.actualizado_en;
         if (data.actualizado_por) foot += ' por ' + data.actualizado_por;
@@ -1017,9 +763,7 @@
       form.reset();
       form.action = "{{ url_for('vencimientos.nuevo') }}";
       document.getElementById('modal-vto-titulo').textContent = 'Nuevo vencimiento';
-      document.getElementById('bloque-alcance').style.display = 'none';
       document.getElementById('btn-eliminar').style.display = 'none';
-      // Pre-seleccionar mensual por ser el caso más común
       document.getElementById('periodo_tipo').value = 'mensual';
       actualizarPeriodoUI();
       _editarId = null;
@@ -1027,47 +771,24 @@
     }
 
     // ── Modal: editar vencimiento (se llena con los datos del row) ────
-    // modoConfirmar=true viene de la solapa Estimaciones: cambia el título y
-    // pone el foco en el monto para revisar el importe antes de "graduar" la
-    // estimación a vencimiento real.
     let _editarId = null;
-    function abrirVtoEditar(v, modoConfirmar) {
+    let _editarConcepto = '';
+    function abrirVtoEditar(v) {
       const form = document.getElementById('form-vto');
       form.reset();
       form.action = `/vencimientos/${v.id}/editar`;
-      document.getElementById('modal-vto-titulo').textContent =
-        (modoConfirmar ? 'Confirmar: ' : 'Editar: ') + v.concepto;
+      document.getElementById('modal-vto-titulo').textContent = 'Editar: ' + v.concepto;
       form.categoria.value = v.categoria;
-      form.tipo.value = v.tipo;
-      form.concepto.value = v.concepto;
-      // Período: derivar tipo + valores desde periodo_desde / periodo_hasta
+      form.nombre.value = v.nombre;
       hidratarPeriodoEnForm(v.periodo_desde || '', v.periodo_hasta || '', v.periodo_facturado || '');
       form.monto.value = v.monto || '';
-      form.monto_estimado.checked = v.monto_estimado;
-      form.estimado_monto_de.value = v.estimado_monto_de || '';
       form.fecha_vencimiento.value = v.fecha_vencimiento || '';
-      form.fecha_estimada.checked = v.fecha_estimada;
-      form.esporadico.checked = !v.es_recurrente;
-      form.pausado.checked = v.pausado;
       form.notas.value = v.notas || '';
-      // Mostrar selector de alcance solo si es recurrente
-      document.getElementById('bloque-alcance').style.display = v.es_recurrente ? 'block' : 'none';
-      // Botón eliminar visible al editar
       document.getElementById('btn-eliminar').style.display = 'inline-flex';
       _editarId = v.id;
-      _editarEsRecurrente = v.es_recurrente;
       _editarConcepto = v.concepto;
       abrirModal('modal-vto');
-      // En modo confirmar: foco + selección del monto para revisarlo de una.
-      if (modoConfirmar) {
-        setTimeout(() => {
-          if (form.monto) { form.monto.focus(); form.monto.select(); }
-        }, 60);
-      }
     }
-
-    // ── Modal: limpiar proyecciones viejas ─────────────────────────────
-    function abrirModalLimpiar() { abrirModal('modal-limpiar'); }
 
     // ── Selector estructurado de período ───────────────────────────────
     const _MESES_ES_LARGO = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -1083,12 +804,10 @@
         'anual':         'periodo-bloque-anual',
         'personalizado': 'periodo-bloque-personalizado',
       };
-      // Ocultar todos
       ['periodo-bloque-mes-inicial', 'periodo-bloque-semestral',
        'periodo-bloque-anual', 'periodo-bloque-personalizado'].forEach(id => {
         document.getElementById(id).style.display = 'none';
       });
-      // Limpiar inputs que no corresponden al tipo elegido (para no mandar basura al backend)
       const tiposMesInicial = ['mensual', 'bimestral', 'trimestral'];
       if (!tiposMesInicial.includes(tipo)) {
         document.getElementById('periodo_mes').value = '';
@@ -1102,7 +821,6 @@
         document.getElementById('periodo_hasta_mes').value = '';
         document.getElementById('periodo_hasta_anio').value = '';
       }
-      // Mostrar el correspondiente
       if (bloques[tipo]) {
         document.getElementById(bloques[tipo]).style.display = 'block';
       }
@@ -1133,11 +851,8 @@
       }
     }
 
-    // Reconstruye el tipo/valores del selector de período a partir de las
-    // fechas desde/hasta (ISO) guardadas, o cae al texto libre si no las tiene.
     function hidratarPeriodoEnForm(desdeStr, hastaStr, periodoTexto) {
       const sel = document.getElementById('periodo_tipo');
-      // Reset campos
       sel.value = '';
       document.getElementById('periodo_mes').value = '';
       document.getElementById('periodo_anio').value = '';
@@ -1150,12 +865,6 @@
       document.getElementById('periodo_hasta_anio').value = '';
 
       if (!desdeStr || !hastaStr) {
-        // Vencimiento viejo sin fechas estructuradas — dejar mensual vacío
-        // para que Facu elija manualmente. El texto se ve en el placeholder.
-        if (periodoTexto) {
-          alert(`Este vencimiento tiene un período viejo cargado como texto libre: "${periodoTexto}".\n` +
-                `Elegí el tipo correcto (mensual/bimestral/etc.) y el mes/año para que quede estructurado.`);
-        }
         sel.value = 'mensual';
         actualizarPeriodoUI();
         return;
@@ -1163,7 +872,6 @@
 
       const [da, dm, dd] = desdeStr.split('-').map(Number);
       const [ha, hm, hd] = hastaStr.split('-').map(Number);
-      // Cantidad de meses cubiertos
       const meses = (ha - da) * 12 + (hm - dm) + 1;
 
       if (meses === 1) {
@@ -1197,7 +905,6 @@
       actualizarPeriodoUI();
     }
 
-    // Listeners de preview en vivo (mensual / bimestral / trimestral)
     document.addEventListener('DOMContentLoaded', () => {
       const mes = document.getElementById('periodo_mes');
       const anio = document.getElementById('periodo_anio');
@@ -1205,13 +912,10 @@
       if (anio) anio.addEventListener('input', actualizarPreviewPeriodo);
     });
 
-    // ── Modal: eliminar con alcance ────────────────────────────────────
-    let _editarEsRecurrente = false;
-    let _editarConcepto = '';
+    // ── Modal: eliminar ────────────────────────────────────────────────
     function abrirModalEliminar() {
       cerrarModal('modal-vto');
       document.getElementById('modal-eliminar-info').textContent = '¿Eliminar "' + _editarConcepto + '"?';
-      document.getElementById('bloque-alcance-eliminar').style.display = _editarEsRecurrente ? 'block' : 'none';
       document.getElementById('form-eliminar').action = `/vencimientos/${_editarId}/eliminar`;
       abrirModal('modal-eliminar');
     }
@@ -1219,9 +923,23 @@
     // ── Modal: pagar ───────────────────────────────────────────────────
     function abrirPopoverPagar(vid, concepto) {
       const form = document.getElementById('form-pagar');
+      form.reset();
       form.action = `/vencimientos/${vid}/pagar`;
       document.getElementById('modal-pagar-titulo').textContent = 'Pagar: ' + concepto;
       abrirModal('modal-pagar');
+    }
+
+    // ── Modal: adjuntar / cambiar / quitar comprobante ─────────────────
+    function abrirComprobante(vid, concepto, tieneComprobante) {
+      const form = document.getElementById('form-comprobante');
+      form.reset();
+      form.action = `/vencimientos/${vid}/comprobante`;
+      document.getElementById('modal-comprobante-titulo').textContent =
+        (tieneComprobante ? 'Cambiar comprobante: ' : 'Adjuntar comprobante: ') + concepto;
+      const quitar = document.getElementById('form-comprobante-quitar');
+      quitar.action = `/vencimientos/${vid}/comprobante`;
+      quitar.style.display = tieneComprobante ? 'block' : 'none';
+      abrirModal('modal-comprobante');
     }
 
     // ── Modal: editar pago (deshacer) ──────────────────────────────────
@@ -1248,23 +966,6 @@
       if (montoActual) form.monto_intereses.value = montoActual;
       if (linkActual)  form.link_intereses.value  = linkActual;
       abrirModal('modal-intereses');
-    }
-
-    // ── Modal: estimados del mes en curso (banner global) ──────────────
-    function abrirModalEstimadosMes() {
-      abrirModal('modal-estimados-mes');
-    }
-
-    // ── Modal: confirmar todas las fechas de una categoría ─────────────
-    function abrirModalFechas(cat, n) {
-      // Ocultar todos los bloques de categoría
-      document.querySelectorAll('.cat-fechas-block').forEach(el => el.style.display = 'none');
-      // Mostrar solo el de la categoría pedida
-      const bloque = document.querySelector(`.cat-fechas-block[data-cat="${cat}"]`);
-      if (bloque) bloque.style.display = 'block';
-      document.getElementById('modal-fechas-titulo').textContent =
-        'Confirmar ' + n + ' fecha' + (n > 1 ? 's' : '') + ' estimadas';
-      abrirModal('modal-fechas');
     }
   </script>
 

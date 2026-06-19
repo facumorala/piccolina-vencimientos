@@ -33,7 +33,7 @@
     {'eyebrow': 'PENDIENTE', 'value_html': pendiente_total | money, 'hint': 'vencido + este mes', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
     {'eyebrow': 'VENCIDO',   'value_html': '<span style="color: #8B1B1B;">' ~ (vencido_total | money) ~ '</span>', 'hint': 'pago atrasado', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
     {'eyebrow': 'ESTA SEMANA', 'value_html': esta_semana | money, 'hint': 'próximos 7 días', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
-    {'eyebrow': 'DATOS POR COMPLETAR', 'value_html': datos_faltantes_total | string, 'hint': 'estimados o faltantes', 'href': url_for('vencimientos.list_view', estimado='si')},
+    {'eyebrow': 'DATOS POR COMPLETAR', 'value_html': datos_faltantes_total | string, 'hint': 'falta monto o fecha', 'href': url_for('vencimientos.list_view', estado='no_pagado')},
   ] %}
   {% include 'identidad/_kpi_strip.html' %}
 
@@ -110,8 +110,10 @@
               <td data-label="Vencimiento">{{ v.fecha_vencimiento | fecha }}</td>
               <td data-label="Atraso"><span class="sem sem-rojo">{{ v.fecha_vencimiento | label_estado }}</span></td>
               <td data-label="Importe" style="text-align: right;">
-                {{ v.monto | money }}
-                {% if v.monto_estimado %}<span class="tag-estimado">estimado</span>{% endif %}
+                {{ ((v.monto or 0) + (v.monto_intereses or 0)) | money }}
+                {% if v.monto_intereses %}
+                  <div class="text-[11px]" style="color: #B85C00;">incluye {{ v.monto_intereses | money }} int.</div>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}
@@ -185,12 +187,6 @@
                   <span class="tag-falta">FALTA monto</span>
                 {% elif v.fecha_vencimiento is none %}
                   <span class="tag-falta">FALTA fecha</span>
-                {% elif v.monto_estimado and v.fecha_estimada %}
-                  <span class="tag-falta">monto y fecha estimados</span>
-                {% elif v.monto_estimado %}
-                  <span class="tag-falta">monto estimado</span>
-                {% elif v.fecha_estimada %}
-                  <span class="tag-falta">fecha estimada</span>
                 {% endif %}
               </td>
               <td data-label="Importe" style="text-align: right;">{{ v.monto | money }}</td>
@@ -199,7 +195,7 @@
         </tbody>
       </table>
       <div>
-        <a class="btn-link" href="{{ url_for('vencimientos.list_view', estimado='si') }}">
+        <a class="btn-link" href="{{ url_for('vencimientos.list_view', estado='no_pagado') }}">
           Ver todos →
         </a>
       </div>

@@ -30,15 +30,10 @@ def start_scheduler():
     h_resumen = int(os.getenv("RESUMEN_LUNES_HORA", "10"))
     h_aviso_3d = int(os.getenv("AVISO_3D_HORA", "9"))
     h_aviso_dia = int(os.getenv("AVISO_DIA_HORA", "9"))
-    h_generador = int(os.getenv("GENERADOR_HORA", "0"))
 
-    # 1. Generador mensual: día 1 a las 00:01
-    _scheduler.add_job(
-        _job_generador_mensual,
-        trigger=CronTrigger(day=1, hour=h_generador, minute=1),
-        id="generador_mensual",
-        replace_existing=True,
-    )
+    # (El generador mensual automático se quitó el 19-jun-2026: ya no se crean
+    # estimaciones a futuro. Ahora Facu trae el mes nuevo con "Repetir mes
+    # anterior" desde el listado, cuando quiere.)
 
     # 2. Resumen semanal: lunes a las 10
     _scheduler.add_job(
@@ -65,20 +60,10 @@ def start_scheduler():
     )
 
     _scheduler.start()
-    print(f"[scheduler] Iniciado. Resumen lun {h_resumen}:00, Avisos {h_aviso_3d}:00, Generador día 1 {h_generador}:01.", flush=True)
+    print(f"[scheduler] Iniciado. Resumen lun {h_resumen}:00, Avisos {h_aviso_3d}:00.", flush=True)
 
 
 # ─── Jobs ─────────────────────────────────────────────────────────────────────
-
-def _job_generador_mensual():
-    """Día 1 de cada mes — asegura que cada recurrente tenga el mes actual + el próximo."""
-    try:
-        from services.generador import asegurar_horizonte_completo
-        n = asegurar_horizonte_completo()
-        print(f"[scheduler] Generador mensual ejecutado: {n} vencimientos creados.", flush=True)
-    except Exception as e:
-        print(f"[scheduler] Error en generador_mensual: {e}", flush=True)
-
 
 def _job_resumen_lunes():
     """Lunes 10:00 — manda a Facu el resumen semanal."""

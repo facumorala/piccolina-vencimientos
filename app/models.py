@@ -14,7 +14,7 @@ Decisiones de diseño documentadas:
 from datetime import datetime, date
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, Date, DateTime,
-    Numeric, ForeignKey, Text, Index, inspect, text,
+    Numeric, ForeignKey, Text, Index, LargeBinary, inspect, text,
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
@@ -99,6 +99,20 @@ class Vencimiento(Base):
     # cotejar contra el comprobante original.
     cuit_emisor = Column(String(20), nullable=True)
     numero_comprobante = Column(String(40), nullable=True)
+
+    # Marca de "repetido del mes anterior" (botón Repetir mes anterior). Las
+    # filas con esto en True se pintan de un color distinto en el listado para
+    # avisar que vinieron auto-repetidas y todavía nadie las revisó a mano. Se
+    # apaga sola en cuanto alguien edita o paga ese vencimiento.
+    es_repeticion = Column(Boolean, default=False, nullable=False)
+
+    # Comprobante de pago adjunto (foto o PDF). Se guarda EN LA BASE (no en el
+    # filesystem) para que perdure entre deploys de Railway, que borra el disco
+    # del server en cada actualización. El historial de comprobantes es el
+    # objetivo central del dashboard.
+    comprobante_datos = Column(LargeBinary, nullable=True)
+    comprobante_nombre = Column(String(255), nullable=True)
+    comprobante_tipo = Column(String(100), nullable=True)   # mime: image/jpeg, application/pdf, etc.
 
     # Otros
     notas = Column(Text, nullable=True)
@@ -240,6 +254,9 @@ def _aplicar_migraciones_ligeras(engine):
     SQLAlchemy `create_all` solo crea tablas faltantes, no columnas faltantes.
     Acá listamos los ADD COLUMN que hicieron falta entre versiones.
     """
+    # Tipo binario portable: Postgres usa BYTEA, SQLite usa BLOB.
+    binario = "BYTEA" if engine.dialect.name == "postgresql" else "BLOB"
+
     columnas_a_agregar = [
         # (tabla, columna, tipo SQL portable)
         ("vencimientos", "monto_intereses", "NUMERIC(14, 2)"),
@@ -250,6 +267,11 @@ def _aplicar_migraciones_ligeras(engine):
         # Período facturado estructurado (27-may-2026).
         ("vencimientos", "periodo_desde", "DATE"),
         ("vencimientos", "periodo_hasta", "DATE"),
+        # Repetición del mes anterior + comprobante de pago (19-jun-2026).
+        ("vencimientos", "es_repeticion", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("vencimientos", "comprobante_datos",  binario),
+        ("vencimientos", "comprobante_nombre", "VARCHAR(255)"),
+        ("vencimientos", "comprobante_tipo",   "VARCHAR(100)"),
     ]
     insp = inspect(engine)
     columnas_recien_agregadas = set()

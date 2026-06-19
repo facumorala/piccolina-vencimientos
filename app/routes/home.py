@@ -196,32 +196,20 @@ def dashboard():
             "monto_restante": (p.cuotas_totales - cuotas_pagas) * p.monto_cuota,
         })
 
-    # ── DATOS POR COMPLETAR (estimados + faltantes) ──────────────────────────
-    # Solo del presente (vencido + este mes + sin fecha). Las estimaciones del
-    # mes próximo no cuentan acá: viven en la solapa Estimaciones del listado.
+    # ── DATOS POR COMPLETAR (faltan monto o fecha) ───────────────────────────
+    # No pagados del presente (vencido + este mes + sin fecha) a los que les
+    # falta el importe o la fecha de vencimiento. Sirve para no olvidarse de
+    # completar lo que entró a medias (ej. una repetición del mes anterior).
     _en_presente = (Vencimiento.fecha_vencimiento < fin_mes_actual) | (Vencimiento.fecha_vencimiento.is_(None))
+    _falta_dato = (Vencimiento.monto.is_(None)) | (Vencimiento.fecha_vencimiento.is_(None))
     datos_faltantes = (
-        q_base.filter(
-            Vencimiento.pagado.is_(False),
-            _en_presente,
-            (Vencimiento.monto_estimado.is_(True)) |
-            (Vencimiento.fecha_estimada.is_(True)) |
-            (Vencimiento.monto.is_(None)) |
-            (Vencimiento.fecha_vencimiento.is_(None))
-        )
+        q_base.filter(Vencimiento.pagado.is_(False), _en_presente, _falta_dato)
         .order_by(Vencimiento.creado_en.desc())
         .limit(10)
         .all()
     )
     datos_faltantes_total = (
-        q_base.filter(
-            Vencimiento.pagado.is_(False),
-            _en_presente,
-            (Vencimiento.monto_estimado.is_(True)) |
-            (Vencimiento.fecha_estimada.is_(True)) |
-            (Vencimiento.monto.is_(None)) |
-            (Vencimiento.fecha_vencimiento.is_(None))
-        )
+        q_base.filter(Vencimiento.pagado.is_(False), _en_presente, _falta_dato)
         .count()
     )
 

@@ -1,20 +1,43 @@
 """
 Vencimientos: listado con filtros, agrupado por categoría/tipo,
 popovers PAGAR/EDITAR, modal de carga/edición.
+
+Rediseño 19-jun-2026 (pedido de Facu — "el objetivo es el historial"):
+- Formulario simplificado: un solo campo "Nombre" (antes Tipo + Concepto).
+  Se sacaron Importe estimado, Fecha estimada, Esporádico y Pausado.
+- Se eliminó toda la UX de estimaciones (solapas, banner, etiquetas) y la
+  generación automática de horizonte. El modelo conserva los campos
+  monto_estimado/fecha_estimada por compatibilidad (los usa la API de COMPRAS),
+  pero no se tocan desde la carga manual.
+- Botón "Repetir mes anterior": duplica los vencimientos del mes pasado al mes
+  actual (importe vacío, fecha corrida un mes), marcados con es_repeticion=True
+  (color distinto) hasta que alguien los edite o pague.
+- Adjuntar comprobante de pago: foto o PDF guardado EN LA BASE (perdura entre
+  deploys de Railway).
 """
 from calendar import monthrange
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, Response
 
 from extensions import get_db, today_ar
 from models import Vencimiento, LogActividad, Ficha, CATEGORIAS
 from auth_helpers import login_required, current_user
 from nav_helpers import redirect_back
-from services.periodo import construir_periodo, TIPOS_PERIODO
+from services.periodo import (
+    construir_periodo, TIPOS_PERIODO, primer_dia, ultimo_dia,
+    sumar_meses, MESES_ES, MESES_ES_ABR,
+)
 
 bp = Blueprint("vencimientos", __name__)
+
+
+_NOMBRE_MES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+# Comprobantes de pago: límite y tipos aceptados.
+MAX_COMPROBANTE = 15 * 1024 * 1024  # 15 MB
 
 
 # ─── Listado ──────────────────────────────────────────────────────────────────
@@ -23,13 +46,11 @@ bp = Blueprint("vencimientos", __name__)
 @login_required
 def list_view():
     db = get_db()
-    hoy = today_ar()
 
     # Filtros desde query string
     f_categoria = request.args.getlist("categoria")
     f_estado = request.args.get("estado", "no_pagado")  # 'no_pagado' | 'pagado' | 'en_plan' | 'todos'
     f_tipo = request.args.get("tipo", "")
-    f_estimado = request.args.get("estimado", "")  # '' | 'si' | 'no'
     f_fecha_tipo = request.args.get("fecha_tipo", "vencimiento")  # 'vencimiento' | 'pago' | 'periodo'
     f_fecha_desde = _parse_date(request.args.get("fecha_desde"))
     f_fecha_hasta = _parse_date(request.args.get("fecha_hasta"))
@@ -38,28 +59,6 @@ def list_view():
     rango_activo = (f_fecha_desde or f_fecha_hasta) and f_fecha_tipo in ("vencimiento", "pago")
     periodo_activo = f_fecha_tipo == "periodo" and f_periodo_texto
 
-    # ── Solapa activa: 'vencimientos' (presente) | 'estimaciones' (lo que viene) ──
-    vista = request.args.get("vista", "vencimientos")
-    if vista not in ("vencimientos", "estimaciones"):
-        vista = "vencimientos"
-
-    # ── ¿Mostrar lo estimado? Por defecto NO: la pantalla arranca limpia con
-    # solo lo confirmado del presente. El botón "Mostrar estimaciones" recarga
-    # con ?est=1 y recién ahí aparecen la solapa de lo que viene, el banner
-    # naranja del mes y las etiquetas de "estimado". Decisión de Facu (19-jun):
-    # ver todo junto lo confunde.
-    mostrar_est = request.args.get("est") == "1"
-    if not mostrar_est:
-        # Sin estimaciones visibles no se puede entrar a esa solapa.
-        vista = "vencimientos"
-
-    # Inicio del mes próximo (frontera entre "presente" y "estimaciones").
-    primer_dia_mes_actual = hoy.replace(day=1)
-    if primer_dia_mes_actual.month == 12:
-        inicio_mes_proximo = primer_dia_mes_actual.replace(year=primer_dia_mes_actual.year + 1, month=1)
-    else:
-        inicio_mes_proximo = primer_dia_mes_actual.replace(month=primer_dia_mes_actual.month + 1)
-
     q = db.query(Vencimiento)
 
     if f_categoria:
@@ -67,55 +66,33 @@ def list_view():
     if f_tipo:
         q = q.filter(Vencimiento.tipo == f_tipo)
 
-    if vista == "estimaciones":
-        # Solapa "Estimaciones": lo que viene (mes próximo en adelante), sin pagar.
-        # Es su propio recorte temporal → ignora los filtros de estado / estimado /
-        # fecha del form (salvo categoría, que sí sigue aplicando arriba).
+    # Filtros de fecha (rango por vencimiento / pago / texto de período)
+    if f_fecha_tipo == "vencimiento":
+        if f_fecha_desde:
+            q = q.filter(Vencimiento.fecha_vencimiento >= f_fecha_desde)
+        if f_fecha_hasta:
+            q = q.filter(Vencimiento.fecha_vencimiento <= f_fecha_hasta)
+    elif f_fecha_tipo == "pago":
+        if f_fecha_desde:
+            q = q.filter(Vencimiento.fecha_pago >= f_fecha_desde)
+        if f_fecha_hasta:
+            q = q.filter(Vencimiento.fecha_pago <= f_fecha_hasta)
+    elif f_fecha_tipo == "periodo" and f_periodo_texto:
+        q = q.filter(Vencimiento.periodo_facturado.ilike(f"%{f_periodo_texto}%"))
+
+    # Estado
+    if f_estado == "pagado":
+        q = q.filter(Vencimiento.pagado.is_(True))
+    elif f_estado == "en_plan":
+        q = q.filter(Vencimiento.plan_id.isnot(None), Vencimiento.plan_cuota_nro.is_(None))
+    elif f_estado == "no_pagado":
+        # Todo lo no pagado (atrasado + actual + lo que se haya cargado a futuro).
+        # Excluye los "cubiertos" por un plan (esos viven en Financiaciones).
         q = q.filter(
             Vencimiento.pagado.is_(False),
             Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
-            Vencimiento.fecha_vencimiento >= inicio_mes_proximo,
         )
-    else:
-        if f_estimado == "si":
-            q = q.filter((Vencimiento.monto_estimado.is_(True)) | (Vencimiento.fecha_estimada.is_(True)))
-        elif f_estimado == "no":
-            q = q.filter(Vencimiento.monto_estimado.is_(False), Vencimiento.fecha_estimada.is_(False))
-
-        # Filtros de fecha (rango por vencimiento / pago / texto de período)
-        if f_fecha_tipo == "vencimiento":
-            if f_fecha_desde:
-                q = q.filter(Vencimiento.fecha_vencimiento >= f_fecha_desde)
-            if f_fecha_hasta:
-                q = q.filter(Vencimiento.fecha_vencimiento <= f_fecha_hasta)
-        elif f_fecha_tipo == "pago":
-            if f_fecha_desde:
-                q = q.filter(Vencimiento.fecha_pago >= f_fecha_desde)
-            if f_fecha_hasta:
-                q = q.filter(Vencimiento.fecha_pago <= f_fecha_hasta)
-        elif f_fecha_tipo == "periodo" and f_periodo_texto:
-            q = q.filter(Vencimiento.periodo_facturado.ilike(f"%{f_periodo_texto}%"))
-
-        # Estado
-        if f_estado == "pagado":
-            q = q.filter(Vencimiento.pagado.is_(True))
-        elif f_estado == "en_plan":
-            q = q.filter(Vencimiento.plan_id.isnot(None), Vencimiento.plan_cuota_nro.is_(None))
-        elif f_estado == "no_pagado":
-            if rango_activo or periodo_activo:
-                # Hay filtro de fecha activo → respetar el rango, solo filtrar por no pagado.
-                q = q.filter(
-                    Vencimiento.pagado.is_(False),
-                    Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
-                )
-            else:
-                # Default sin filtro de fecha: lo no pagado del mes en curso + atrasado.
-                # (El mes próximo en adelante NO aparece acá — vive en la solapa Estimaciones.)
-                q = q.filter(
-                    Vencimiento.pagado.is_(False),
-                    Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
-                    (Vencimiento.fecha_vencimiento < inicio_mes_proximo) | (Vencimiento.fecha_vencimiento.is_(None)),
-                )
+    # 'todos' = sin filtro de estado
 
     # Ordenar: más vencidos primero (fechas viejas), luego nulls al final
     q = q.order_by(Vencimiento.fecha_vencimiento.asc().nullslast(), Vencimiento.id.desc())
@@ -130,7 +107,6 @@ def list_view():
     # Subtotales por categoría + totales globales del listado filtrado.
     # Incluye intereses por pago fuera de término dentro del total (pagados y pendientes).
     subtotales = {}
-    fechas_estimadas_por_cat = {}  # cat -> [Vencimiento, ...]
     g_total = Decimal("0")
     g_pagado = Decimal("0")
     g_no_pagado = Decimal("0")
@@ -144,7 +120,6 @@ def list_view():
         no_pagado = Decimal("0")
         int_pagados = Decimal("0")
         int_pendientes = Decimal("0")
-        estimadas = []
         for tipo_lista in tipos.values():
             for v in tipo_lista:
                 monto_v = v.monto or Decimal("0")
@@ -156,8 +131,6 @@ def list_view():
                 else:
                     no_pagado += monto_v + int_v
                     int_pendientes += int_v
-                if v.fecha_estimada and not v.pagado:
-                    estimadas.append(v)
                 g_cantidad += 1
         subtotales[cat] = {
             "total": total,
@@ -171,8 +144,6 @@ def list_view():
         g_no_pagado += no_pagado
         g_int_pagados += int_pagados
         g_int_pendientes += int_pendientes
-        if estimadas:
-            fechas_estimadas_por_cat[cat] = estimadas
 
     globales = {
         "total": g_total,
@@ -189,60 +160,14 @@ def list_view():
 
     hay_filtro_fecha = bool(rango_activo or periodo_activo)
 
-    # Banner global del MES EN CURSO: vencimientos no pagados con fecha o monto
-    # estimado. Independiente de los filtros del listado — siempre mira al mes
-    # actual. Sirve para que Facu el día 1 confirme los estimados del mes.
-    primer_dia = hoy.replace(day=1)
-    if primer_dia.month == 12:
-        fin_mes = primer_dia.replace(year=primer_dia.year + 1, month=1)
-    else:
-        fin_mes = primer_dia.replace(month=primer_dia.month + 1)
-    estimados_mes = db.query(Vencimiento).filter(
-        Vencimiento.pagado.is_(False),
-        Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
-        Vencimiento.fecha_vencimiento >= primer_dia,
-        Vencimiento.fecha_vencimiento < fin_mes,
-        (Vencimiento.monto_estimado.is_(True)) | (Vencimiento.fecha_estimada.is_(True)),
-    ).order_by(Vencimiento.fecha_vencimiento.asc()).all()
-
-    # ── Contador de la solapa "Estimaciones": lo que viene (mes próximo +), sin pagar ──
-    n_estimaciones = db.query(Vencimiento).filter(
-        Vencimiento.pagado.is_(False),
-        Vencimiento.plan_id.is_(None) | Vencimiento.plan_cuota_nro.isnot(None),
-        Vencimiento.fecha_vencimiento >= inicio_mes_proximo,
-    ).count()
-
-    # ── Proyecciones viejas a limpiar (sobrantes del horizonte de 12 meses) ──
-    # Estimaciones recurrentes sueltas, sin pagar, más allá del mes próximo. Son
-    # copias auto-generadas que ya nadie confirmó. Se cuentan acá para mostrar el
-    # número en el botón de limpieza ANTES de borrar nada.
-    if inicio_mes_proximo.month == 12:
-        inicio_proyecciones_viejas = inicio_mes_proximo.replace(year=inicio_mes_proximo.year + 1, month=1)
-    else:
-        inicio_proyecciones_viejas = inicio_mes_proximo.replace(month=inicio_mes_proximo.month + 1)
-    n_proyecciones_viejas = db.query(Vencimiento).filter(
-        Vencimiento.pagado.is_(False),
-        Vencimiento.plan_id.is_(None),
-        Vencimiento.es_recurrente.is_(True),
-        Vencimiento.fecha_estimada.is_(True),
-        Vencimiento.monto_estimado.is_(True),
-        Vencimiento.fecha_vencimiento >= inicio_proyecciones_viejas,
-    ).count()
-
     return render_template(
         "vencimientos/list.html",
-        vista=vista,
-        mostrar_est=mostrar_est,
-        n_estimaciones=n_estimaciones,
-        n_proyecciones_viejas=n_proyecciones_viejas,
         agrupados=agrupados,
         subtotales=subtotales,
-        fechas_estimadas_por_cat=fechas_estimadas_por_cat,
         globales=globales,
         f_categoria=f_categoria,
         f_estado=f_estado,
         f_tipo=f_tipo,
-        f_estimado=f_estimado,
         f_fecha_tipo=f_fecha_tipo,
         f_fecha_desde=f_fecha_desde,
         f_fecha_hasta=f_fecha_hasta,
@@ -250,107 +175,85 @@ def list_view():
         hay_filtro_fecha=hay_filtro_fecha,
         categorias=CATEGORIAS,
         tipos_con_ficha=tipos_con_ficha,
-        estimados_mes=estimados_mes,
-        nombre_mes_actual=_NOMBRE_MES_ES[hoy.month],
-        anio_mes_actual=hoy.year,
     )
 
 
-_NOMBRE_MES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
-                  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+# ─── Repetir mes anterior ────────────────────────────────────────────────────
 
-
-# ─── Generador manual: crear los recurrentes del mes próximo ─────────────────
-
-@bp.route("/generar-mes-proximo", methods=["POST"])
+@bp.route("/repetir-mes-anterior", methods=["POST"])
 @login_required
-def generar_mes_proximo():
-    """Asegura que cada recurrente tenga cargado el mes actual + el próximo (botón manual)."""
-    from services.generador import asegurar_horizonte_completo
-    try:
-        n = asegurar_horizonte_completo()
-        if n:
-            flash(f"Se crearon {n} estimaciones del mes próximo.", "success")
-        else:
-            flash("Todos los recurrentes ya tienen el mes próximo cargado.", "success")
-    except Exception as e:
-        flash(f"Error generando: {e}", "error")
-    return redirect_back("vencimientos.list_view")
-
-
-# ─── Limpieza de proyecciones viejas (sobrantes del horizonte de 12 meses) ───
-
-@bp.route("/limpiar-proyecciones-viejas", methods=["POST"])
-@login_required
-def limpiar_proyecciones_viejas():
+def repetir_mes_anterior():
     """
-    Borra las estimaciones recurrentes sueltas, sin pagar, de más allá del mes
-    próximo. Son las copias auto-generadas por el horizonte viejo (12 meses) que
-    nadie confirmó. Conservador: solo toca filas que siguen 100% estimadas
-    (monto y fecha estimados), recurrentes, sin plan y no pagadas. No toca nada
-    confirmado, pagado, esporádico ni cuotas de financiación.
+    Duplica al mes en curso todos los vencimientos sueltos del mes pasado.
+    Cada copia: fecha de vencimiento corrida +1 mes, período corrido +1 mes,
+    importe VACÍO (Facu carga el real) y marcada con es_repeticion=True para
+    que se vea de un color distinto hasta que alguien la edite o pague.
+    No duplica las cuotas de financiaciones ni pisa lo que ya exista en el mes.
     """
     db = get_db()
     hoy = today_ar()
 
-    # Inicio del mes actual + 2 (= todo lo posterior al mes próximo).
-    primer_dia_mes_actual = hoy.replace(day=1)
-    if primer_dia_mes_actual.month == 12:
-        inicio_mes_proximo = primer_dia_mes_actual.replace(year=primer_dia_mes_actual.year + 1, month=1)
+    primer_mes_actual = hoy.replace(day=1)
+    if primer_mes_actual.month == 1:
+        primer_mes_ant = primer_mes_actual.replace(year=primer_mes_actual.year - 1, month=12)
     else:
-        inicio_mes_proximo = primer_dia_mes_actual.replace(month=primer_dia_mes_actual.month + 1)
-    if inicio_mes_proximo.month == 12:
-        inicio_limpieza = inicio_mes_proximo.replace(year=inicio_mes_proximo.year + 1, month=1)
-    else:
-        inicio_limpieza = inicio_mes_proximo.replace(month=inicio_mes_proximo.month + 1)
+        primer_mes_ant = primer_mes_actual.replace(month=primer_mes_actual.month - 1)
 
-    a_borrar = db.query(Vencimiento).filter(
-        Vencimiento.pagado.is_(False),
+    origenes = db.query(Vencimiento).filter(
         Vencimiento.plan_id.is_(None),
-        Vencimiento.es_recurrente.is_(True),
-        Vencimiento.fecha_estimada.is_(True),
-        Vencimiento.monto_estimado.is_(True),
-        Vencimiento.fecha_vencimiento >= inicio_limpieza,
+        Vencimiento.fecha_vencimiento >= primer_mes_ant,
+        Vencimiento.fecha_vencimiento < primer_mes_actual,
     ).all()
 
-    n = len(a_borrar)
-    for v in a_borrar:
-        db.delete(v)
+    creados = 0
+    salteados = 0
+    for o in origenes:
+        nueva_fecha = _sumar_un_mes(o.fecha_vencimiento) if o.fecha_vencimiento else None
+
+        # Período corrido +1 mes (preserva el largo: mensual, bimestral, etc.)
+        p_desde = p_hasta = None
+        periodo_str = None
+        if o.periodo_desde and o.periodo_hasta:
+            d_anio, d_mes = sumar_meses(o.periodo_desde.year, o.periodo_desde.month, 1)
+            h_anio, h_mes = sumar_meses(o.periodo_hasta.year, o.periodo_hasta.month, 1)
+            p_desde = primer_dia(d_anio, d_mes)
+            p_hasta = ultimo_dia(h_anio, h_mes)
+            periodo_str = _periodo_string(p_desde, p_hasta)
+
+        # Dedup: si ya hay uno de mismo tipo+categoría+período en el destino, saltear.
+        if p_desde and p_hasta and _buscar_duplicado_periodo(db, o.categoria, o.tipo, p_desde, p_hasta):
+            salteados += 1
+            continue
+
+        copia = Vencimiento(
+            categoria=o.categoria,
+            tipo=o.tipo,
+            concepto=o.tipo,
+            periodo_facturado=periodo_str,
+            periodo_desde=p_desde,
+            periodo_hasta=p_hasta,
+            monto=None,                 # importe vacío (decisión de Facu)
+            fecha_vencimiento=nueva_fecha,
+            es_recurrente=True,
+            es_repeticion=True,
+            notas=o.notas,
+        )
+        db.add(copia)
+        creados += 1
+
     db.commit()
-    _log_actividad(db, "limpiar", None, None, f"Limpió {n} proyecciones estimadas viejas")
-    if n:
-        flash(f"Listo: borré {n} proyecciones estimadas viejas. El presente quedó prolijo.", "success")
+    _log_actividad(db, "repetir", None, None, f"Repitió {creados} vencimientos del mes anterior")
+
+    if creados:
+        msg = f"Listo: repetí {creados} vencimiento{'s' if creados != 1 else ''} del mes pasado. "
+        msg += "Quedaron marcados en color para que cargues el importe de cada uno."
+        if salteados:
+            msg += f" ({salteados} ya estaban cargados este mes, no se duplicaron.)"
+        flash(msg, "success")
+    elif salteados:
+        flash("Los vencimientos del mes pasado ya estaban todos cargados este mes.", "success")
     else:
-        flash("No había proyecciones viejas para limpiar.", "success")
-    return redirect_back("vencimientos.list_view")
-
-
-# ─── Confirmar fechas estimadas en lote (por categoría) ──────────────────────
-
-@bp.route("/confirmar-fechas", methods=["POST"])
-@login_required
-def confirmar_fechas():
-    """Recibe id_<n>=YYYY-MM-DD por cada vencimiento de la categoría y los confirma."""
-    db = get_db()
-    n = 0
-    for key, val in request.form.items():
-        if not key.startswith("fecha_") or not val:
-            continue
-        try:
-            vid = int(key.replace("fecha_", ""))
-        except ValueError:
-            continue
-        nueva = _parse_date(val)
-        if not nueva:
-            continue
-        v = db.get(Vencimiento, vid)
-        if v:
-            v.fecha_vencimiento = nueva
-            v.fecha_estimada = False
-            n += 1
-    db.commit()
-    _log_actividad(db, "confirmar_fechas", None, None, f"Confirmó {n} fechas estimadas")
-    flash(f"Se confirmaron {n} fechas.", "success")
+        flash("No encontré vencimientos el mes pasado para repetir.", "error")
     return redirect_back("vencimientos.list_view")
 
 
@@ -362,7 +265,7 @@ def nuevo():
     if request.method == "POST":
         db = get_db()
         categoria = request.form.get("categoria")
-        tipo = request.form.get("tipo", "").strip()
+        nombre = request.form.get("nombre", "").strip()
 
         try:
             canon, p_desde, p_hasta = _periodo_desde_form(request.form)
@@ -370,48 +273,31 @@ def nuevo():
             flash(f"Período inválido: {e}", "error")
             return redirect_back("vencimientos.list_view")
 
-        dup = _buscar_duplicado_periodo(db, categoria, tipo, p_desde, p_hasta)
+        dup = _buscar_duplicado_periodo(db, categoria, nombre, p_desde, p_hasta)
         if dup is not None:
             flash(
-                f"Ya hay un vencimiento de {tipo} ({categoria}) cargado para el período "
-                f"{canon} (id #{dup.id}, concepto «{dup.concepto}»). Si querés reemplazarlo, "
-                "editá el existente.",
+                f"Ya hay un vencimiento de «{nombre}» ({categoria}) cargado para el período "
+                f"{canon} (id #{dup.id}). Si querés reemplazarlo, editá el existente.",
                 "error",
             )
             return redirect_back("vencimientos.list_view")
 
         v = Vencimiento(
             categoria=categoria,
-            tipo=tipo,
-            concepto=request.form.get("concepto", "").strip(),
+            tipo=nombre,
+            concepto=nombre,
             periodo_facturado=canon,
             periodo_desde=p_desde,
             periodo_hasta=p_hasta,
             monto=_parse_decimal(request.form.get("monto")),
-            monto_estimado=request.form.get("monto_estimado") == "on",
-            estimado_monto_de=(request.form.get("estimado_monto_de") or "").strip() or None,
             fecha_vencimiento=_parse_date(request.form.get("fecha_vencimiento")),
-            fecha_estimada=request.form.get("fecha_estimada") == "on",
-            es_recurrente=not (request.form.get("esporadico") == "on"),
+            es_recurrente=True,
             notas=(request.form.get("notas") or "").strip() or None,
         )
         db.add(v)
         db.commit()
         _log_actividad(db, "crear", v.id, None, f"Cargó: {v.concepto}")
-
-        # Si es recurrente y tiene fecha, anticipar solo el mes próximo (estimado).
-        n_horizonte = 0
-        if v.es_recurrente and not v.pausado and v.fecha_vencimiento:
-            from services.generador import generar_horizonte_desde
-            try:
-                n_horizonte = generar_horizonte_desde(v.id)
-            except Exception as e:
-                print(f"[nuevo] No se pudo generar horizonte para {v.id}: {e}", flush=True)
-
-        if n_horizonte:
-            flash("Vencimiento creado. Dejé el mes próximo como estimación (lo ves en la solapa Estimaciones).", "success")
-        else:
-            flash("Vencimiento creado.", "success")
+        flash("Vencimiento creado.", "success")
         return redirect_back("vencimientos.list_view")
     # GET no se usa habitualmente (el form vive como modal en el listado)
     return render_template("vencimientos/form.html", v=None, categorias=CATEGORIAS)
@@ -420,22 +306,15 @@ def nuevo():
 @bp.route("/<int:vid>/editar", methods=["POST"])
 @login_required
 def editar(vid):
-    """Edita un vencimiento. Si es recurrente, opcionalmente propaga cambios a futuros."""
+    """Edita un vencimiento. Al tocarlo a mano deja de ser 'repetición sin revisar'."""
     db = get_db()
     v = db.get(Vencimiento, vid)
     if not v:
         flash("Vencimiento no encontrado.", "error")
         return redirect(url_for("vencimientos.list_view"))
 
-    alcance = request.form.get("alcance", "solo")  # 'solo' | 'futuros' | 'todos'
-
-    # Estado previo para detectar transición "estimado → confirmado"
-    monto_estimado_antes = v.monto_estimado
-    monto_antes = v.monto
-
-    # Aplicar al original
     nueva_categoria = request.form.get("categoria", v.categoria)
-    nuevo_tipo = request.form.get("tipo", v.tipo).strip()
+    nuevo_nombre = request.form.get("nombre", v.tipo).strip()
 
     try:
         canon, p_desde, p_hasta = _periodo_desde_form(request.form)
@@ -443,86 +322,37 @@ def editar(vid):
         flash(f"Período inválido: {e}", "error")
         return redirect_back("vencimientos.list_view")
 
-    dup = _buscar_duplicado_periodo(db, nueva_categoria, nuevo_tipo, p_desde, p_hasta, excluir_id=v.id)
+    dup = _buscar_duplicado_periodo(db, nueva_categoria, nuevo_nombre, p_desde, p_hasta, excluir_id=v.id)
     if dup is not None:
         flash(
-            f"Ya hay otro vencimiento de {nuevo_tipo} ({nueva_categoria}) para el período "
+            f"Ya hay otro vencimiento de «{nuevo_nombre}» ({nueva_categoria}) para el período "
             f"{canon} (id #{dup.id}). No se guardaron los cambios.",
             "error",
         )
         return redirect_back("vencimientos.list_view")
 
     v.categoria = nueva_categoria
-    v.tipo = nuevo_tipo
-    v.concepto = request.form.get("concepto", v.concepto).strip()
+    v.tipo = nuevo_nombre
+    v.concepto = nuevo_nombre
     v.periodo_facturado = canon
     v.periodo_desde = p_desde
     v.periodo_hasta = p_hasta
     v.monto = _parse_decimal(request.form.get("monto"))
-    v.monto_estimado = request.form.get("monto_estimado") == "on"
-    v.estimado_monto_de = (request.form.get("estimado_monto_de") or "").strip() or None
-    nueva_fecha = _parse_date(request.form.get("fecha_vencimiento"))
-    v.fecha_vencimiento = nueva_fecha
-    v.fecha_estimada = request.form.get("fecha_estimada") == "on"
-    v.es_recurrente = not (request.form.get("esporadico") == "on")
-    v.pausado = request.form.get("pausado") == "on"
+    v.fecha_vencimiento = _parse_date(request.form.get("fecha_vencimiento"))
     v.notas = (request.form.get("notas") or "").strip() or None
-
-    # AUTO: si Facu acaba de confirmar el monto real (destildó "Importe estimado"
-    # o cambió el monto teniéndolo confirmado), propagar el monto nuevo a las
-    # copias futuras del mismo tipo+categoria que sigan marcadas como estimadas.
-    # No pisa copias que Facu ya editó manualmente (monto_estimado=False).
-    n_montos_propagados = 0
-    confirmo_monto = (monto_estimado_antes and not v.monto_estimado) or (
-        not v.monto_estimado and v.monto is not None and v.monto != monto_antes
-    )
-    if confirmo_monto and v.es_recurrente and v.monto is not None and nueva_fecha:
-        futuros_estimados = db.query(Vencimiento).filter(
-            Vencimiento.id != v.id,
-            Vencimiento.tipo == v.tipo,
-            Vencimiento.categoria == v.categoria,
-            Vencimiento.es_recurrente.is_(True),
-            Vencimiento.plan_id.is_(None),
-            Vencimiento.pagado.is_(False),
-            Vencimiento.monto_estimado.is_(True),
-            Vencimiento.fecha_vencimiento > nueva_fecha,
-        ).all()
-        for f in futuros_estimados:
-            f.monto = v.monto
-            f.estimado_monto_de = v.periodo_facturado or "mes anterior"
-            n_montos_propagados += 1
-
-    # Propagar a recurrentes futuros/pendientes
-    n_propagados = 0
-    if alcance != "solo" and v.es_recurrente and nueva_fecha:
-        relacionados = _buscar_recurrentes_relacionados(db, v, alcance)
-        for r in relacionados:
-            r.categoria = v.categoria
-            r.tipo = v.tipo
-            r.es_recurrente = v.es_recurrente
-            r.pausado = v.pausado
-            r.notas = v.notas
-            # Día del mes: mantener mes/año del relacionado, cambiar solo el día
-            if r.fecha_vencimiento:
-                ultimo = monthrange(r.fecha_vencimiento.year, r.fecha_vencimiento.month)[1]
-                r.fecha_vencimiento = r.fecha_vencimiento.replace(day=min(nueva_fecha.day, ultimo))
-            n_propagados += 1
+    # Lo tocaron a mano → ya no es una repetición pendiente de revisar.
+    v.es_repeticion = False
 
     db.commit()
     _log_actividad(db, "editar", v.id, None, f"Editó: {v.concepto}")
-    mensajes = ["Vencimiento actualizado."]
-    if n_propagados:
-        mensajes.append(f"{n_propagados} recurrentes propagados.")
-    if n_montos_propagados:
-        mensajes.append(f"{n_montos_propagados} montos estimados a futuro actualizados al nuevo valor.")
-    flash(" ".join(mensajes), "success")
+    flash("Vencimiento actualizado.", "success")
     return redirect_back("vencimientos.list_view")
 
 
 @bp.route("/<int:vid>/eliminar", methods=["POST"])
 @login_required
 def eliminar(vid):
-    """Elimina un vencimiento. Si es recurrente, opcionalmente borra futuros también."""
+    """Elimina un vencimiento."""
     db = get_db()
     v = db.get(Vencimiento, vid)
     if not v:
@@ -530,42 +360,11 @@ def eliminar(vid):
         return redirect_back("vencimientos.list_view")
 
     concepto = v.concepto
-    alcance = request.form.get("alcance", "solo")
-
-    n_extras = 0
-    if alcance != "solo" and v.es_recurrente:
-        for r in _buscar_recurrentes_relacionados(db, v, alcance):
-            db.delete(r)
-            n_extras += 1
-
     db.delete(v)
     db.commit()
-    _log_actividad(db, "eliminar", None, None, f"Eliminó: {concepto} (+ {n_extras} relacionados)")
-    flash(f"Vencimiento eliminado{'' if not n_extras else f' + {n_extras} recurrentes'}.", "success")
+    _log_actividad(db, "eliminar", None, None, f"Eliminó: {concepto}")
+    flash("Vencimiento eliminado.", "success")
     return redirect_back("vencimientos.list_view")
-
-
-def _buscar_recurrentes_relacionados(db, original: Vencimiento, alcance: str):
-    """
-    Devuelve los vencimientos del mismo tipo+categoría que están relacionados
-    con `original` según el alcance:
-      - 'futuros' → no pagados con fecha > original.fecha (o sin fecha)
-      - 'todos'   → todos los no pagados (excepto el original)
-    """
-    q = db.query(Vencimiento).filter(
-        Vencimiento.id != original.id,
-        Vencimiento.tipo == original.tipo,
-        Vencimiento.categoria == original.categoria,
-        Vencimiento.es_recurrente.is_(True),
-        Vencimiento.plan_id.is_(None),
-        Vencimiento.pagado.is_(False),
-    )
-    if alcance == "futuros" and original.fecha_vencimiento:
-        q = q.filter(
-            (Vencimiento.fecha_vencimiento > original.fecha_vencimiento) |
-            (Vencimiento.fecha_vencimiento.is_(None))
-        )
-    return q.all()
 
 
 # ─── Marcar pagado / Editar pago / Eliminar pago ──────────────────────────────
@@ -578,13 +377,76 @@ def pagar(vid):
     if not v:
         flash("Vencimiento no encontrado.", "error")
         return redirect_back("vencimientos.list_view")
+
+    # Comprobante opcional (foto/PDF). Si falla la validación, no registra el pago.
+    ok, msg = _guardar_comprobante(v, request.files.get("comprobante"))
+    if not ok:
+        flash(msg, "error")
+        return redirect_back("vencimientos.list_view")
+
     v.pagado = True
     v.fecha_pago = _parse_date(request.form.get("fecha_pago")) or today_ar()
     v.metodo_pago = request.form.get("metodo_pago") or None
+    # Pagarlo también lo confirma como cargado a mano.
+    v.es_repeticion = False
     db.commit()
     _log_actividad(db, "pagar", v.id, None, f"Marcó pagado: {v.concepto} (${v.monto or '?'})")
-    flash("Pago registrado.", "success")
+    flash("Pago registrado." + (" Comprobante adjuntado." if v.comprobante_datos else ""), "success")
     return redirect_back("vencimientos.list_view")
+
+
+@bp.route("/<int:vid>/comprobante", methods=["POST"])
+@login_required
+def adjuntar_comprobante(vid):
+    """Adjunta, reemplaza o quita el comprobante de un vencimiento ya existente."""
+    db = get_db()
+    v = db.get(Vencimiento, vid)
+    if not v:
+        flash("Vencimiento no encontrado.", "error")
+        return redirect_back("vencimientos.list_view")
+
+    if request.form.get("quitar") == "1":
+        v.comprobante_datos = None
+        v.comprobante_nombre = None
+        v.comprobante_tipo = None
+        db.commit()
+        _log_actividad(db, "comprobante", v.id, None, f"Quitó comprobante de: {v.concepto}")
+        flash("Comprobante quitado.", "success")
+        return redirect_back("vencimientos.list_view")
+
+    archivo = request.files.get("comprobante")
+    if not archivo or not archivo.filename:
+        flash("No elegiste ningún archivo.", "error")
+        return redirect_back("vencimientos.list_view")
+
+    ok, msg = _guardar_comprobante(v, archivo)
+    if not ok:
+        flash(msg, "error")
+        return redirect_back("vencimientos.list_view")
+    db.commit()
+    _log_actividad(db, "comprobante", v.id, None, f"Adjuntó comprobante a: {v.concepto}")
+    flash("Comprobante guardado.", "success")
+    return redirect_back("vencimientos.list_view")
+
+
+@bp.route("/<int:vid>/comprobante", methods=["GET"])
+@login_required
+def ver_comprobante(vid):
+    """Devuelve el comprobante para verlo/descargarlo en el navegador."""
+    db = get_db()
+    v = db.get(Vencimiento, vid)
+    if not v or not v.comprobante_datos:
+        flash("Ese vencimiento no tiene comprobante.", "error")
+        return redirect_back("vencimientos.list_view")
+
+    tipo = v.comprobante_tipo or "application/octet-stream"
+    nombre = v.comprobante_nombre or "comprobante"
+    # inline para que las imágenes/PDFs se abran en el navegador.
+    return Response(
+        v.comprobante_datos,
+        mimetype=tipo,
+        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
+    )
 
 
 @bp.route("/<int:vid>/intereses", methods=["POST"])
@@ -635,6 +497,50 @@ def eliminar_pago(vid):
 
 
 # ─── Helpers internos ─────────────────────────────────────────────────────────
+
+def _guardar_comprobante(v, archivo):
+    """
+    Valida y guarda el comprobante (foto/PDF) en el vencimiento `v`.
+    Devuelve (ok, mensaje_de_error). Si no se adjuntó nada, devuelve (True, None)
+    sin tocar nada (el comprobante es siempre opcional).
+    """
+    if not archivo or not archivo.filename:
+        return True, None
+    tipo = (archivo.mimetype or "").lower()
+    if not (tipo.startswith("image/") or tipo == "application/pdf"):
+        return False, "El comprobante tiene que ser una foto o un PDF."
+    datos = archivo.read()
+    if len(datos) > MAX_COMPROBANTE:
+        return False, "El comprobante es muy pesado (máximo 15 MB). Probá con una foto más liviana."
+    if not datos:
+        return True, None
+    v.comprobante_datos = datos
+    v.comprobante_nombre = (archivo.filename or "comprobante")[:255]
+    v.comprobante_tipo = tipo[:100]
+    return True, None
+
+
+def _sumar_un_mes(d):
+    """Devuelve `d` corrido un mes adelante, ajustando el día si el mes es más corto."""
+    if d is None:
+        return None
+    total_mes = d.month  # 0-based +1 = d.month
+    nuevo_anio = d.year + total_mes // 12
+    nuevo_mes = total_mes % 12 + 1
+    ultimo = monthrange(nuevo_anio, nuevo_mes)[1]
+    return d.replace(year=nuevo_anio, month=nuevo_mes, day=min(d.day, ultimo))
+
+
+def _periodo_string(desde, hasta):
+    """Arma el string del período a partir de las fechas desde/hasta."""
+    if not desde or not hasta:
+        return None
+    if desde.year == hasta.year and desde.month == hasta.month:
+        return f"{MESES_ES[desde.month]} {desde.year}"
+    if desde.year == hasta.year:
+        return f"{MESES_ES_ABR[desde.month]}-{MESES_ES_ABR[hasta.month]} {desde.year}"
+    return f"{MESES_ES_ABR[desde.month]} {desde.year}-{MESES_ES_ABR[hasta.month]} {hasta.year}"
+
 
 def _periodo_desde_form(form):
     """
