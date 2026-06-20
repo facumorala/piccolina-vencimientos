@@ -9,7 +9,11 @@
         <div class="smcaps mb-2" style="color: var(--brand);">· VENCIMIENTOS ·</div>
         <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Listado</h1>
       </div>
-      <div class="flex gap-2 flex-wrap">
+      <div class="flex gap-2 flex-wrap no-print">
+        <button class="btn btn-ghost" type="button" onclick="window.print()"
+                title="Imprimir o guardar en PDF la lista tal como está filtrada">
+          🖨 Imprimir
+        </button>
         <button class="btn btn-ghost" type="button" onclick="abrirModal('modal-repetir')"
                 title="Traer los vencimientos del mes pasado a este mes">
           🔁 Repetir mes anterior
@@ -17,6 +21,17 @@
         <button class="btn btn-primary" type="button"
                 onclick="abrirVtoNuevo()">+ Nuevo vencimiento</button>
       </div>
+    </div>
+
+    {# Encabezado que aparece SOLO al imprimir, con el detalle del filtro aplicado #}
+    <div class="solo-print" style="display: none; margin-top: 10px; color: #000; font-size: 13px;">
+      <strong>Vencimientos · Piccolina</strong> —
+      {% if f_estado == 'pagado' %}Pagados{% elif f_estado == 'en_plan' %}En plan{% elif f_estado == 'todos' %}Todos los estados{% else %}No pagados{% endif %}
+      ·
+      {% if f_categoria %}{{ f_categoria | map('label_categoria') | join(', ') }}{% else %}Todas las categorías{% endif %}
+      {% if f_fecha_desde %} · desde {{ f_fecha_desde | fecha }}{% endif %}
+      {% if f_fecha_hasta %} · hasta {{ f_fecha_hasta | fecha }}{% endif %}
+      · Impreso el {{ today_ar() | fecha }}
     </div>
   </section>
 
@@ -649,6 +664,25 @@
       transition: background 150ms;
     }
     .tag-intereses:hover { background: #FFCC80; }
+
+    /* ── Impresión: deja solo la lista filtrada, prolija ───────────────── */
+    @media print {
+      /* Fuera todo lo interactivo / de navegación */
+      header, footer, .brand-strip, .no-print, #form-filtros,
+      .modal-overlay, .btn-ficha, .tag-repeticion { display: none !important; }
+      /* El encabezado de filtro sí aparece */
+      .solo-print { display: block !important; }
+      /* Ocultar la columna de acciones (siempre la última) */
+      .tbl th:last-child, .tbl td:last-child { display: none !important; }
+      /* El desglose de intereses se imprime como texto plano */
+      .tag-intereses { background: transparent !important; color: #000 !important; padding: 0 !important; }
+      .row-repeticion { background: #fff !important; }
+      .row-repeticion td:first-child { box-shadow: none !important; }
+      a { color: #000 !important; text-decoration: none !important; }
+      .resumen-panel { border: 1px solid #999 !important; box-shadow: none !important; }
+      .tbl { font-size: 11px; }
+      body { background: #fff !important; }
+    }
   </style>
 
   <script>
