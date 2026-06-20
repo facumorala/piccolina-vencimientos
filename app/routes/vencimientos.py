@@ -94,56 +94,31 @@ def list_view():
         )
     # 'todos' = sin filtro de estado
 
-    # Ordenar: más vencidos primero (fechas viejas), luego nulls al final
+    # Ordenar: más vencidos primero (fechas viejas arriba), lo más lejos de
+    # vencer abajo, y los que todavía no tienen fecha al final.
     q = q.order_by(Vencimiento.fecha_vencimiento.asc().nullslast(), Vencimiento.id.desc())
 
+    # Una sola lista corrida (sin agrupar por categoría — la categoría se ve en
+    # su columna). Si se quiere separar por categoría, se usa el filtro.
     vencimientos = q.all()
 
-    # Agrupar en Python por categoría / tipo (más simple que GROUP_BY de SQL para esto)
-    agrupados = {}
-    for v in vencimientos:
-        agrupados.setdefault(v.categoria, {}).setdefault(v.tipo, []).append(v)
-
-    # Subtotales por categoría + totales globales del listado filtrado.
-    # Incluye intereses por pago fuera de término dentro del total (pagados y pendientes).
-    subtotales = {}
+    # Totales globales del listado filtrado. Incluye los intereses por pago fuera
+    # de término dentro del total (tanto en pagados como en pendientes).
     g_total = Decimal("0")
     g_pagado = Decimal("0")
     g_no_pagado = Decimal("0")
     g_int_pagados = Decimal("0")
     g_int_pendientes = Decimal("0")
-    g_cantidad = 0
-
-    for cat, tipos in agrupados.items():
-        total = Decimal("0")
-        pagado = Decimal("0")
-        no_pagado = Decimal("0")
-        int_pagados = Decimal("0")
-        int_pendientes = Decimal("0")
-        for tipo_lista in tipos.values():
-            for v in tipo_lista:
-                monto_v = v.monto or Decimal("0")
-                int_v = v.monto_intereses or Decimal("0")
-                total += monto_v + int_v
-                if v.pagado:
-                    pagado += monto_v + int_v
-                    int_pagados += int_v
-                else:
-                    no_pagado += monto_v + int_v
-                    int_pendientes += int_v
-                g_cantidad += 1
-        subtotales[cat] = {
-            "total": total,
-            "pagado": pagado,
-            "no_pagado": no_pagado,
-            "intereses_pagados": int_pagados,
-            "intereses_pendientes": int_pendientes,
-        }
-        g_total += total
-        g_pagado += pagado
-        g_no_pagado += no_pagado
-        g_int_pagados += int_pagados
-        g_int_pendientes += int_pendientes
+    for v in vencimientos:
+        monto_v = v.monto or Decimal("0")
+        int_v = v.monto_intereses or Decimal("0")
+        g_total += monto_v + int_v
+        if v.pagado:
+            g_pagado += monto_v + int_v
+            g_int_pagados += int_v
+        else:
+            g_no_pagado += monto_v + int_v
+            g_int_pendientes += int_v
 
     globales = {
         "total": g_total,
@@ -151,7 +126,7 @@ def list_view():
         "no_pagado": g_no_pagado,
         "intereses_pagados": g_int_pagados,
         "intereses_pendientes": g_int_pendientes,
-        "cantidad": g_cantidad,
+        "cantidad": len(vencimientos),
     }
 
     # Set de tipos que ya tienen ficha cargada — sirve para que el ícono 📖
@@ -162,8 +137,7 @@ def list_view():
 
     return render_template(
         "vencimientos/list.html",
-        agrupados=agrupados,
-        subtotales=subtotales,
+        vencimientos=vencimientos,
         globales=globales,
         f_categoria=f_categoria,
         f_estado=f_estado,

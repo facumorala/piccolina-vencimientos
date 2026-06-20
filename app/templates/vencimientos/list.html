@@ -185,48 +185,26 @@
     </section>
   {% endif %}
 
-  {# ── Listado agrupado ────────────────────────────────────────────────── #}
-  {% if not agrupados %}
+  {# ── Listado: una sola lista, de más vencido (arriba) a más lejos (abajo) ── #}
+  {% if not vencimientos %}
     <p class="pt-8" style="color: var(--ink-3);">No hay vencimientos con estos filtros.</p>
-  {% endif %}
-
-  {% for cat in categorias %}
-    {% if cat in agrupados %}
-      {% set sub = subtotales[cat] %}
-      <section class="pt-8">
-        <div class="flex items-center justify-between mb-3 pb-2 border-b flex-wrap gap-2"
-             style="border-color: var(--ink);">
-          <div class="smcaps" style="color: var(--brand);">· {{ cat | label_categoria }} ·</div>
-          <div class="text-[12px]" style="color: var(--ink-3);">
-            Total: <strong style="color: var(--ink);">{{ sub.total | money }}</strong>
-            · No pagado: <strong style="color: var(--ink);">{{ sub.no_pagado | money }}</strong>
-            {% if sub.pagado %}
-              · Pagado: <strong style="color: #1F6F1F;">{{ sub.pagado | money }}</strong>
-            {% endif %}
-            {% if sub.intereses_pendientes %}
-              · <span style="color: #B85C00;">Int. pendientes: <strong>{{ sub.intereses_pendientes | money }}</strong></span>
-            {% endif %}
-            {% if sub.intereses_pagados %}
-              · <span style="color: #B85C00;">Int. pagados: <strong>{{ sub.intereses_pagados | money }}</strong></span>
-            {% endif %}
-          </div>
-        </div>
-
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>Concepto</th>
-              <th>Período</th>
-              <th>Vencimiento</th>
-              <th>Estado</th>
-              <th>F. Pago</th>
-              <th style="text-align: right;">Importe</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for tipo, lista in agrupados[cat].items() %}
-              {% for v in lista %}
+  {% else %}
+    <section class="pt-8">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Categoría</th>
+            <th>Período</th>
+            <th>Vencimiento</th>
+            <th>Estado</th>
+            <th>F. Pago</th>
+            <th style="text-align: right;">Importe</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in vencimientos %}
                 {% set semaforo_clase = v.fecha_vencimiento | semaforo(v.pagado, v.plan_id is not none and v.plan_cuota_nro is none) %}
                 {% set data_vto = {
                   'id': v.id,
@@ -259,6 +237,7 @@
                       <span class="tag-falta">⚠ falta dato</span>
                     {% endif %}
                   </td>
+                  <td style="color: var(--ink-2);">{{ v.categoria | label_categoria }}</td>
                   <td style="color: var(--ink-2);">{{ v.periodo_facturado or '—' }}</td>
                   <td><span class="num">{{ v.fecha_vencimiento | fecha }}</span></td>
                   <td>
@@ -308,13 +287,11 @@
                     {% endif %}
                   </td>
                 </tr>
-              {% endfor %}
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-    {% endif %}
-  {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
 
   {# ──────────────────────────────────────────────────────────────────── #}
   {# MODAL: Vencimiento (sirve para nuevo y editar)                       #}
