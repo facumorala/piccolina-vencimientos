@@ -42,6 +42,7 @@ class User(Base):
     rol = Column(String(20), nullable=False, default="contadoras")  # 'facu' | 'contadoras'
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_login = Column(DateTime)  # se actualiza en cada login exitoso
 
 
 # ─── Vencimiento ──────────────────────────────────────────────────────────────
@@ -272,6 +273,8 @@ def _aplicar_migraciones_ligeras(engine):
         ("vencimientos", "comprobante_datos",  binario),
         ("vencimientos", "comprobante_nombre", "VARCHAR(255)"),
         ("vencimientos", "comprobante_tipo",   "VARCHAR(100)"),
+        # Último acceso de cada usuario, para la pantalla de gestión (05-jul-2026).
+        ("users", "last_login", "TIMESTAMP"),
     ]
     insp = inspect(engine)
     columnas_recien_agregadas = set()

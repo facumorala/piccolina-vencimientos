@@ -136,3 +136,15 @@ def baja_contadora(uid):
         db.commit()
         flash(f"Contadora '{u.name}' dada de baja.", "success")
     return redirect_back("config.view")
+
+
+@bp.route("/contadoras/<int:uid>/reactivar", methods=["POST"])
+@facu_required
+def reactivar_contadora(uid):
+    db = get_db()
+    u = db.get(User, uid)
+    if u and u.rol == "contadoras":
+        u.active = True
+        db.commit()
+        flash(f"Contadora '{u.name}' reactivada.", "success")
+    return redirect_back("config.view")
