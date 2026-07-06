@@ -273,8 +273,8 @@ def nuevo():
         _log_actividad(db, "crear", v.id, None, f"Cargó: {v.concepto}")
         flash("Vencimiento creado.", "success")
         return redirect_back("vencimientos.list_view")
-    # GET no se usa habitualmente (el form vive como modal en el listado)
-    return render_template("vencimientos/form.html", v=None, categorias=CATEGORIAS)
+    # GET: el form vive como modal dentro del listado (no existe template propio)
+    return redirect(url_for("vencimientos.list_view"))
 
 
 @bp.route("/<int:vid>/editar", methods=["POST"])
