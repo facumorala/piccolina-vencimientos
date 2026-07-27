@@ -270,7 +270,7 @@ def nuevo():
         )
         db.add(v)
         db.commit()
-        _log_actividad(db, "crear", v.id, None, f"Cargó: {v.concepto}")
+        _log_actividad(db, "crear", v.id, None, f"Cargó: {v.concepto} — {_monto_para_log(v.monto)}")
         flash("Vencimiento creado.", "success")
         return redirect_back("vencimientos.list_view")
     # GET: el form vive como modal dentro del listado (no existe template propio)
@@ -318,7 +318,7 @@ def editar(vid):
     v.es_repeticion = False
 
     db.commit()
-    _log_actividad(db, "editar", v.id, None, f"Editó: {v.concepto}")
+    _log_actividad(db, "editar", v.id, None, f"Editó: {v.concepto} — {_monto_para_log(v.monto)}")
     flash("Vencimiento actualizado.", "success")
     return redirect_back("vencimientos.list_view")
 
@@ -364,7 +364,7 @@ def pagar(vid):
     # Pagarlo también lo confirma como cargado a mano.
     v.es_repeticion = False
     db.commit()
-    _log_actividad(db, "pagar", v.id, None, f"Marcó pagado: {v.concepto} (${v.monto or '?'})")
+    _log_actividad(db, "pagar", v.id, None, f"Marcó pagado: {v.concepto} — {_monto_para_log(v.monto)}")
     flash("Pago registrado." + (" Comprobante adjuntado." if v.comprobante_datos else ""), "success")
     return redirect_back("vencimientos.list_view")
 
@@ -589,6 +589,19 @@ def _parse_date(s):
         return datetime.strptime(s, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _monto_para_log(monto):
+    """
+    Formatea el importe para los avisos de Telegram. Sin importe cargado → 'sin importe'.
+    Reutiliza el mismo formato de plata del resto de los mensajes del bot
+    ($ 1.234.567,89). Import diferido (mismo patrón que el scheduler) para no
+    cargar telegram_bot al importar las rutas.
+    """
+    if monto is None:
+        return "sin importe"
+    from services.telegram_bot import _fmt_money
+    return _fmt_money(monto)
 
 
 def _log_actividad(db, accion, vencimiento_id, plan_id, descripcion):
