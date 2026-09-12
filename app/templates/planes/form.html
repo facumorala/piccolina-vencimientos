@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block title %}Editar {{ plan.nombre }} · Vencimientos Piccolina{% endblock %}
+
+{% block content %}
+  <section class="pt-10 pb-4">
+    <div class="flex items-center gap-3 text-[12px] mb-4">
+      <a href="{{ url_for('planes.list_view') }}"
+         style="color: var(--ink-3); text-decoration: none;">← Financiaciones</a>
+      <span style="color: var(--ink-3);">·</span>
+      <a href="{{ url_for('planes.detalle', pid=plan.id) }}"
+         style="color: var(--ink-3); text-decoration: none;">{{ plan.nombre }}</a>
+    </div>
+    <div class="smcaps mb-2" style="color: var(--brand);">· FINANCIACIÓN ·</div>
+    <h1 class="huge" style="font-size: clamp(28px, 3.5vw, 42px);">Editar plan</h1>
+  </section>
+
+  <form method="post" class="pb-10" style="max-width: 760px;">
+
+    {# ── Datos generales: cambiarlos no afecta el calendario ─────────────── #}
+    <div class="plan-form-seccion">
+      <div class="smcaps mb-1" style="color: var(--brand);">· DATOS DEL PLAN ·</div>
+      <p class="ayuda mb-4">
+        Cambiar cualquiera de estos campos es seguro: no toca las cuotas del calendario.
+      </p>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Nombre del plan</label>
+        <input class="input-box" name="nombre" type="text" required
+               value="{{ plan.nombre }}">
+        <p class="ayuda">Si lo cambiás, las cuotas del calendario se renombran solas.</p>
+      </div>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Fuente</label>
+        <select class="input-box" name="fuente">
+          {% for f in fuentes %}
+            <option value="{{ f }}" {% if plan.fuente == f %}selected{% endif %}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Estado</label>
+        <select class="input-box" name="estado">
+          {% for e in estados %}
+            <option value="{{ e }}" {% if plan.estado == e %}selected{% endif %}>{{ e }}</option>
+          {% endfor %}
+        </select>
+        <p class="ayuda">
+          <strong>activo</strong>: se está pagando · <strong>terminado</strong>: se
+          pagó completo · <strong>incumplido</strong>: se cayó el plan.
+        </p>
+      </div>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Obligaciones que cubre</label>
+        <textarea class="input-box" name="obligaciones_cubiertas" rows="3"
+                  placeholder="ej: IVA marzo y abril 2025 + Aportes y Contribuciones SS mayo y junio"
+                  >{{ plan.obligaciones_cubiertas or '' }}</textarea>
+        <p class="ayuda">Texto libre. Es lo que se muestra arriba de todo en el detalle del plan.</p>
+      </div>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Notas</label>
+        <textarea class="input-box" name="notas" rows="3"
+                  placeholder="Cualquier cosa que te sirva recordar sobre este plan."
+                  >{{ plan.notas or '' }}</textarea>
+      </div>
+    </div>
+
+    {# ── Números: cambiarlos rehace las cuotas pendientes ────────────────── #}
+    <div class="plan-form-seccion" style="margin-top: 34px;">
+      <div class="smcaps mb-1" style="color: var(--brand);">· NÚMEROS DEL PLAN ·</div>
+
+      <div class="aviso-calendario">
+        <strong>Ojo con estos cuatro campos.</strong>
+        Cuando creaste el plan, el sistema generó automáticamente
+        {{ plan.cuotas_totales }} cuotas en el calendario. Si cambiás alguno de
+        estos números, esas cuotas se rehacen:
+        <ul>
+          <li>Las <strong>{{ cuotas_pagadas | length }} ya pagadas</strong> quedan
+              intactas — esa plata ya se movió, no se toca.</li>
+          <li>Las <strong>{{ n_pendientes }} pendientes</strong> se borran y se
+              vuelven a crear con los datos nuevos.</li>
+        </ul>
+        {% if cuotas_pagadas %}
+          <p style="margin-top: 8px;">
+            Cuotas pagadas hoy:
+            {% for c in cuotas_pagadas %}
+              <span class="pill-pagada">
+                {{ c.plan_cuota_nro }} · {{ c.fecha_vencimiento | fecha }} · {{ c.monto | money }}
+              </span>
+            {% endfor %}
+          </p>
+          <p class="ayuda" style="margin-top: 8px;">
+            Por eso no podés bajar la cantidad de cuotas por debajo de
+            {{ cuotas_pagadas | map(attribute='plan_cuota_nro') | max }}.
+          </p>
+        {% endif %}
+      </div>
+
+      {% if importes_distintos %}
+        <div class="aviso-credito">
+          <strong>⚠️ Este plan tiene cuotas con importes distintos entre sí.</strong>
+          Es lo típico de un <strong>crédito bancario</strong>: el interés baja mes a
+          mes, así que cada cuota vale algo diferente y el "monto por cuota" de acá
+          abajo es solo un número de referencia.
+          <ul>
+            <li>
+              Si cambiás la fecha, el día o la cantidad de cuotas,
+              <strong>cada cuota conserva su importe real</strong>.
+            </li>
+            <li>
+              Pero si tocás el <strong>monto por cuota</strong>, todas las pendientes
+              pasan a ese mismo importe y <strong>se pierden los del banco</strong>.
+              No lo cambies salvo que sea justo lo que querés.
+            </li>
+          </ul>
+        </div>
+      {% endif %}
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Monto por cuota</label>
+        <input class="input-box" name="monto_cuota" type="number" step="0.01" required
+               value="{{ plan.monto_cuota }}">
+        {% if importes_distintos %}
+          <p class="ayuda">Dejalo como está para no aplanar los importes reales.</p>
+        {% endif %}
+      </div>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Cantidad de cuotas</label>
+        <input class="input-box" name="cuotas_totales" type="number" min="1" required
+               value="{{ plan.cuotas_totales }}">
+      </div>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Día del mes</label>
+        <input class="input-box" name="dia_del_mes" type="number" min="1" max="31" required
+               value="{{ plan.dia_del_mes }}">
+        <p class="ayuda">Si ponés 31, en los meses más cortos la cuota cae el último día.</p>
+      </div>
+
+      <div class="plan-form-bloque">
+        <label class="form-label">Fecha de la primera cuota</label>
+        <input class="input-box" name="fecha_primera_cuota" type="date" required
+               value="{{ plan.fecha_primera_cuota }}">
+      </div>
+    </div>
+
+    <div class="flex gap-2 mt-8 justify-end">
+      <a class="btn btn-ghost" href="{{ url_for('planes.detalle', pid=plan.id) }}">Cancelar</a>
+      <button class="btn btn-primary" type="submit">Guardar cambios</button>
+    </div>
+  </form>
+
+  {# ── Zona de peligro: eliminar el plan ───────────────────────────────── #}
+  <section class="pb-16" style="max-width: 760px;">
+    <div class="zona-peligro">
+      <div class="smcaps mb-2" style="color: #8B1B1B;">· ELIMINAR ESTE PLAN ·</div>
+      {% if cuotas_pagadas %}
+        <p class="text-[13px]" style="color: var(--ink-2);">
+          Este plan <strong>no se puede eliminar</strong> porque ya tiene
+          {{ cuotas_pagadas | length }} cuota(s) pagada(s): borrarlo haría
+          desaparecer plata que realmente salió. Si el plan se terminó o se cayó,
+          cambiale el <strong>estado</strong> acá arriba.
+        </p>
+      {% else %}
+        <p class="text-[13px] mb-4" style="color: var(--ink-2);">
+          Todavía no pagaste ninguna cuota, así que el plan se puede borrar entero.
+        </p>
+        <button class="btn btn-plum" type="button" onclick="abrirModalEliminarPlan()">
+          Eliminar plan
+        </button>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: confirmar eliminación (modal propio, nunca el confirm() nativo) #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {% if not cuotas_pagadas %}
+    <div id="modal-eliminar-plan" class="modal-overlay" style="display: none;">
+      <div class="modal" style="max-width: 480px;">
+        <h2 class="huge mb-3" style="font-size: 22px;">Eliminar «{{ plan.nombre }}»</h2>
+        <p class="text-[13px] mb-3" style="color: var(--ink-2);">Esto es lo que va a pasar:</p>
+        <ul class="lista-borrado">
+          <li>
+            Se <strong>borran las {{ plan.cuotas_totales }} cuotas</strong> de este
+            plan del calendario de vencimientos.
+          </li>
+          {% if n_cubiertos %}
+            <li>
+              Los <strong>{{ n_cubiertos }} vencimientos</strong> que el plan cubría
+              <strong>no se borran</strong>: se desenganchan y vuelven a aparecer
+              como pendientes.
+            </li>
+          {% else %}
+            <li>No hay vencimientos viejos enganchados a este plan.</li>
+          {% endif %}
+          <li>Se borra la ficha del plan. <strong>No se puede deshacer.</strong></li>
+        </ul>
+        <form method="post" action="{{ url_for('planes.eliminar', pid=plan.id) }}">
+          <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" onclick="cerrarModalEliminarPlan()">
+              Cancelar
+            </button>
+            <button class="btn btn-plum" type="submit">Sí, eliminar el plan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      function abrirModalEliminarPlan() {
+        document.getElementById('modal-eliminar-plan').style.display = 'grid';
+      }
+      function cerrarModalEliminarPlan() {
+        document.getElementById('modal-eliminar-plan').style.display = 'none';
+      }
+    </script>
+  {% endif %}
+
+  <style>
+    .plan-form-bloque { margin-top: 18px; }
+    .form-label {
+      display: block; font-size: 12px; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--ink-2); margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .ayuda { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+    textarea.input-box { font-family: inherit; resize: vertical; }
+
+    .aviso-calendario {
+      border: 1px solid var(--rule);
+      border-left: 3px solid var(--brand);
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--ink-2);
+    }
+    .aviso-calendario ul { margin: 8px 0 0 18px; list-style: disc; }
+    .aviso-calendario li { margin-bottom: 4px; }
+
+    .aviso-credito {
+      border: 1px solid rgba(139, 27, 27, 0.35);
+      border-left: 3px solid #8B1B1B;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--ink-2);
+    }
+    .aviso-credito ul { margin: 8px 0 0 18px; list-style: disc; }
+    .aviso-credito li { margin-bottom: 4px; }
+
+    .pill-pagada {
+      display: inline-block; margin: 3px 4px 0 0; padding: 2px 8px;
+      border: 1px solid var(--rule); border-radius: 999px;
+      font-size: 11px; color: var(--ink-2); white-space: nowrap;
+    }
+
+    .zona-peligro {
+      border: 1px solid rgba(139, 27, 27, 0.35);
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 8px;
+    }
+
+    .lista-borrado {
+      margin: 0 0 18px 18px; list-style: disc;
+      font-size: 13px; color: var(--ink-2);
+    }
+    .lista-borrado li { margin-bottom: 6px; }
+  </style>
+{% endblock %}

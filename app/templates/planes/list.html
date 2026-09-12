@@ -63,8 +63,10 @@
                 {{ d.plan.estado }}
               </span>
             </td>
-            <td>
+            <td style="white-space: nowrap;">
               <a class="btn-link" href="{{ url_for('planes.detalle', pid=d.plan.id) }}">Ver →</a>
+              <a class="btn-link" style="margin-left: 10px; color: var(--ink-3);"
+                 href="{{ url_for('planes.editar', pid=d.plan.id) }}">Editar</a>
             </td>
           </tr>
         {% endfor %}

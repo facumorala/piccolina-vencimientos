@@ -8,7 +8,10 @@
         <div class="smcaps mb-2" style="color: var(--brand);">· FINANCIACIÓN · {{ plan.fuente }} · {{ plan.estado | upper }} ·</div>
         <h1 class="huge" style="font-size: clamp(28px, 3.8vw, 44px);">{{ plan.nombre }}</h1>
       </div>
-      <a class="btn btn-ghost" href="{{ url_for('planes.list_view') }}">← Volver</a>
+      <div class="flex gap-2">
+        <a class="btn btn-ghost" href="{{ url_for('planes.list_view') }}">← Volver</a>
+        <a class="btn btn-primary" href="{{ url_for('planes.editar', pid=plan.id) }}">✎ Editar plan</a>
+      </div>
     </div>
   </section>
 
@@ -26,6 +29,15 @@
       <div class="card">
         <div class="smcaps mb-3">· OBLIGACIONES QUE CUBRE ·</div>
         <p style="color: var(--ink-2); font-size: 14px;">{{ plan.obligaciones_cubiertas }}</p>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if plan.notas %}
+    <section class="pt-4">
+      <div class="card">
+        <div class="smcaps mb-3">· NOTAS ·</div>
+        <p style="color: var(--ink-2); font-size: 14px; white-space: pre-line;">{{ plan.notas }}</p>
       </div>
     </section>
   {% endif %}
