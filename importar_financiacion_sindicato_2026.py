@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Carga la FINANCIACION DEL SINDICATO (UTHGRA) de sept-2026: la deuda acumulada
-hasta el periodo 07/2026, refinanciada en 8 eCheqs de pago diferido.
+Carga la FINANCIACION DEL SINDICATO (UTHGRA) de sept-2026: la deuda de los
+periodos FEBRERO 2026 a JULIO 2026 inclusive, refinanciada en 8 eCheqs de
+pago diferido. No confundir con el PLAN SINDICATO viejo (cheques del ICBC),
+que cubre feb-2025 a ene-2026 y se sigue pagando en paralelo: son dos
+acuerdos distintos y no se solapan.
 
 POR QUE UN SCRIPT Y NO LA PANTALLA WEB:
 el formulario de planes genera las cuotas con un "dia del mes" fijo, y estos
@@ -38,7 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.models import Plan, Vencimiento  # noqa: E402
 
 
-NOMBRE_PLAN = "PLAN SINDICATO 2 (deuda hasta jul-2026)"
+NOMBRE_PLAN = "PLAN SINDICATO 2 (feb a jul 2026)"
 
 # Los 8 eCheqs, tal cual figuran en el listado del banco.
 # (numero de eCheq, fecha de pago, importe)
@@ -93,12 +96,14 @@ def main(simular: bool = False):
             return
 
         notas = (
-            "Refinanciacion de la deuda con el sindicato (UTHGRA) acumulada hasta el "
-            "periodo 07/2026, pagada con 8 eCheqs de pago diferido.\n"
+            "Refinanciacion de la deuda con el sindicato (UTHGRA) de los periodos "
+            "FEBRERO 2026 a JULIO 2026 inclusive, pagada con 8 eCheqs de pago diferido.\n"
             f"Total financiado: {_plata(TOTAL)} en 8 cuotas iguales de "
             f"{_plata(CHEQUES[0][2])}.\n"
             "Beneficiario: CUIT 34-53133865-2 - UNION DE TRABAJADORES HOTELEROS "
             "GASTRONOMICOS. Los 8 cheques figuran en estado 'Liberada'.\n"
+            "No confundir con el PLAN SINDICATO viejo (cheques del ICBC), que cubre los "
+            "periodos febrero 2025 a enero 2026 y se sigue pagando en paralelo.\n"
             "El numero de eCheq de cada cuota esta anotado en la cuota misma.\n\n"
             "IMPORTANTE - las fechas NO son todas el mismo dia del mes: la cuota 6 "
             "vence el 06-mar-2027 (febrero no tiene dia 30, el banco la corrio) y la 7 "
@@ -115,8 +120,8 @@ def main(simular: bool = False):
             dia_del_mes=30,                      # el dia dominante de los cheques
             fecha_primera_cuota=CHEQUES[0][1],
             obligaciones_cubiertas=(
-                "Deuda con el sindicato (UTHGRA) hasta el periodo 07/2026, "
-                "financiada en 8 eCheqs."
+                "Deuda con el sindicato (UTHGRA) de los periodos febrero 2026 a "
+                "julio 2026 inclusive, financiada en 8 eCheqs."
             ),
             estado="activo",
             notas=notas,
