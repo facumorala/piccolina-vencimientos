@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 Carga la FINANCIACION DEL SINDICATO (UTHGRA) de sept-2026: la deuda de los
-periodos FEBRERO 2026 a JULIO 2026 inclusive, refinanciada en 8 eCheqs de
-pago diferido. No confundir con el PLAN SINDICATO viejo (cheques del ICBC),
-que cubre feb-2025 a ene-2026 y se sigue pagando en paralelo: son dos
-acuerdos distintos y no se solapan.
+periodos FEBRERO a AGOSTO 2026 inclusive MAS la obra social de julio 2026,
+refinanciada en 8 eCheqs de pago diferido. No confundir con el PLAN SINDICATO
+viejo (cheques del ICBC), que cubre feb-2025 a ene-2026 y se sigue pagando en
+paralelo: son dos acuerdos distintos y no se solapan.
+
+28-sep-2026 - EL ALCANCE CAMBIO: la primera version de este script decia
+"feb a jul 2026" porque era lo que se sabia el 23-sep. Con la planilla del
+acuerdo aparecieron AGOSTO ($1.216.055) y la OBRA SOCIAL de julio
+($1.015.270,64), y se corrigieron junio ($1.115.083,02 -> $1.387.755) y
+agosto. El plan en la base ya quedo actualizado; este script refleja el
+acuerdo final para que el guard de "ya existe" siga matcheando por nombre.
 
 POR QUE UN SCRIPT Y NO LA PANTALLA WEB:
 el formulario de planes genera las cuotas con un "dia del mes" fijo, y estos
@@ -41,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.models import Plan, Vencimiento  # noqa: E402
 
 
-NOMBRE_PLAN = "PLAN SINDICATO 2 (feb a jul 2026)"
+NOMBRE_PLAN = "PLAN SINDICATO 2 (feb a ago 2026)"
 
 # Los 8 eCheqs, tal cual figuran en el listado del banco.
 # (numero de eCheq, fecha de pago, importe)
@@ -97,7 +104,15 @@ def main(simular: bool = False):
 
         notas = (
             "Refinanciacion de la deuda con el sindicato (UTHGRA) de los periodos "
-            "FEBRERO 2026 a JULIO 2026 inclusive, pagada con 8 eCheqs de pago diferido.\n"
+            "FEBRERO a AGOSTO 2026 inclusive mas la obra social de julio 2026, "
+            "pagada con 8 eCheqs de pago diferido.\n"
+            "Capital: $6.552.296 de sindicato (feb 584.117 / mar 649.818 / abr 654.574 / "
+            "may 748.932 / jun 1.387.755 / jul 1.311.045 / ago 1.216.055) + $1.015.270,64 "
+            "de obra social de julio = $7.567.566,64. Mas $378.376 de gastos "
+            "administrativos = $7.945.942,64. El costo financiero son los $1.056.857,36 "
+            "que van del subtotal al total en cheques.\n"
+            "La obra social venia adentro del F931 de julio 2026: se desconto de ese 931 "
+            "(bajo de $7.137.768,18 a $6.122.497,54) para no contar la deuda dos veces.\n"
             f"Total financiado: {_plata(TOTAL)} en 8 cuotas iguales de "
             f"{_plata(CHEQUES[0][2])}.\n"
             "Beneficiario: CUIT 34-53133865-2 - UNION DE TRABAJADORES HOTELEROS "
@@ -120,8 +135,9 @@ def main(simular: bool = False):
             dia_del_mes=30,                      # el dia dominante de los cheques
             fecha_primera_cuota=CHEQUES[0][1],
             obligaciones_cubiertas=(
-                "Deuda con el sindicato (UTHGRA) de los periodos febrero 2026 a "
-                "julio 2026 inclusive, financiada en 8 eCheqs."
+                "Sindicato (UTHGRA) de los periodos febrero a agosto 2026 inclusive "
+                "($6.552.296) + deuda de obra social de julio 2026 ($1.015.270,64), "
+                "financiado en 8 eCheqs."
             ),
             estado="activo",
             notas=notas,
