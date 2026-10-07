@@ -70,6 +70,32 @@ def create_app() -> Flask:
             response.headers["Expires"] = "0"
         return response
 
+    # ── Portal Piccolina: entrar con un toque desde el Portal ───────────────
+    # La "puerta del pase" (/sso). Apagada si faltan las variables PORTAL_*.
+    # El login de siempre sigue funcionando aparte. Ver portal_sso.py.
+    from sqlalchemy import func as _func
+    from extensions import get_db as _get_db
+    from models import User as _User
+    from portal_sso import init_portal_sso
+
+    def _buscar_para_portal(identidad):
+        # Mismas reglas que el login normal: por username y solo activos.
+        return _get_db().query(_User).filter(
+            _func.lower(_User.username) == identidad.lower(), _User.active.is_(True)
+        ).first()
+
+    def _sesion_desde_portal(user):
+        # Igual que el login normal (routes/auth.py).
+        from datetime import datetime as _dt
+        user.last_login = _dt.utcnow()
+        _get_db().commit()
+        session.clear()
+        session["user_id"] = user.id
+        session["user_name"] = user.name
+        session["user_rol"] = user.rol
+
+    init_portal_sso(app, buscar_usuario=_buscar_para_portal, iniciar_sesion=_sesion_desde_portal)
+
     return app
 
 
