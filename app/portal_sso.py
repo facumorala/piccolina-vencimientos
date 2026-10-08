@@ -14,6 +14,12 @@ Qué hace:
   da un pase nuevo sin que note nada. Así, si Facu le corta el acceso a
   alguien en el Portal, queda afuera de todos los sistemas en menos de 1 h.
 - El login de siempre del dashboard NO se toca: sigue andando aparte.
+- Salto automático: en un navegador que ya entró alguna vez por el Portal
+  (queda marcado con una cookie), si el dashboard pide login se lo manda
+  directo al Portal y vuelve a la pantalla que había pedido (ej. el link de
+  un pedido que llegó por Telegram). Los navegadores que nunca usaron el
+  Portal (el celular de la caja, la contadora) siguen viendo el login normal.
+  Para forzar el login normal: /login?local=1
 
 Variables de entorno (si falta alguna, la puerta queda apagada y /sso da 404):
 - PORTAL_URL           dirección del Portal (ej. https://portal...app)
@@ -29,7 +35,7 @@ Cómo se conecta (en create_app):
 import os
 import threading
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from flask import Blueprint, Response, abort, redirect, request, session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -42,6 +48,11 @@ GRACIA_FORMULARIOS = 900    # 15 min extra para no perder un formulario a medio 
 
 CLAVE_HASTA = "portal_sso_hasta"
 CLAVE_PERSONA = "portal_sso_u"
+# Marca de "este navegador usa el Portal" (dura ~1 año).
+COOKIE_MARCA = "portal_sso_conocido"
+DURACION_MARCA = 400 * 24 * 3600
+# Recién cerró sesión en el dashboard: no saltar al Portal por 10 minutos.
+COOKIE_SALIO = "portal_sso_salio"
 
 # Pases ya usados (cada dashboard corre con un solo proceso en Railway).
 _usados = {}
@@ -82,6 +93,22 @@ def _ruta_segura(destino):
     return destino
 
 
+def _ruta_interna(destino):
+    """
+    Deja solo la ruta interna de un 'next'. Algunos dashboards mandan la URL
+    completa (https://este-dominio/pedido/5): si es de este mismo sitio se
+    queda con '/pedido/5'; si es de otro sitio, la descarta.
+    """
+    if not destino:
+        return None
+    if destino.startswith(("http://", "https://")):
+        partes = urlsplit(destino)
+        if partes.netloc != request.host:
+            return None
+        destino = partes.path + (f"?{partes.query}" if partes.query else "")
+    return _ruta_segura(destino)
+
+
 def _pagina_error(titulo, detalle, portal, codigo):
     """Página simple y autocontenida (no depende de las plantillas del dashboard)."""
     volver = f'<p><a href="{portal}/">← Volver al Portal</a></p>' if portal else ""
@@ -106,13 +133,16 @@ def _es_navegacion():
     return "text/html" in acepta or "*/*" in acepta or not acepta
 
 
-def init_portal_sso(app, buscar_usuario, iniciar_sesion, prefijo=""):
+def init_portal_sso(app, buscar_usuario, iniciar_sesion, prefijo="",
+                    endpoint_login="auth.login", endpoint_logout="auth.logout"):
     """
     buscar_usuario(identificador) → el usuario local ACTIVO, o None.
     iniciar_sesion(usuario)       → arma la sesión igual que el login normal
                                     (incluye session.clear()).
     prefijo                       → si el dashboard vive bajo una subruta
                                     (Vencimientos: "/vencimientos").
+    endpoint_login                → la pantalla de login del dashboard.
+    endpoint_logout               → la ruta de "cerrar sesión" del dashboard.
     """
     bp = Blueprint("portal_sso", __name__)
 
@@ -154,6 +184,9 @@ def init_portal_sso(app, buscar_usuario, iniciar_sesion, prefijo=""):
         destino = _ruta_segura(datos.get("next")) or (prefijo + "/" if prefijo else "/")
         resp = redirect(destino)
         resp.headers["Cache-Control"] = "no-store"
+        # Marca este navegador como "usa el Portal" (para el salto automático).
+        resp.set_cookie(COOKIE_MARCA, "1", max_age=DURACION_MARCA, httponly=True,
+                        secure=request.is_secure, samesite="Lax")
         return resp
 
     app.register_blueprint(bp, url_prefix=prefijo or None)
@@ -182,6 +215,35 @@ def init_portal_sso(app, buscar_usuario, iniciar_sesion, prefijo=""):
         # dashboard responde como siempre que no hay nadie logueado.
         session.clear()
         return None
+
+    @app.before_request
+    def saltar_login_con_portal():
+        """En vez del formulario de login, ir al Portal (solo si este navegador ya lo usa)."""
+        if request.endpoint != endpoint_login or request.method != "GET":
+            return None
+        if request.args.get("local") or not request.cookies.get(COOKIE_MARCA):
+            return None
+        if request.cookies.get(COOKIE_SALIO):
+            return None  # acaba de cerrar sesión: mostrar el login normal
+        cfg = _config()
+        if not cfg:
+            return None
+        siguiente = _ruta_interna(request.args.get("next"))
+        destino = f"{cfg['portal']}/ir/{cfg['slug']}"
+        if siguiente:
+            destino += "?" + urlencode({"next": siguiente})
+        return redirect(destino)
+
+    @app.after_request
+    def marcar_salida(resp):
+        # Al cerrar sesión, 10 minutos sin salto automático (si no, el Portal
+        # lo volvería a hacer entrar al instante y "Salir" no serviría).
+        if request.endpoint == endpoint_logout:
+            resp.set_cookie(COOKIE_SALIO, "1", max_age=600, httponly=True,
+                            secure=request.is_secure, samesite="Lax")
+        elif request.endpoint == "portal_sso.entrar" and resp.status_code in (301, 302, 303):
+            resp.delete_cookie(COOKIE_SALIO)
+        return resp
 
     @app.context_processor
     def inyectar_portal():
