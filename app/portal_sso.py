@@ -37,11 +37,13 @@ import threading
 import time
 from urllib.parse import urlencode, urlsplit
 
-from flask import Blueprint, Response, abort, redirect, request, session
+from flask import Blueprint, Response, abort, jsonify, redirect, request, session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 # Debe ser IGUAL al del Portal (app/routes.py → SALT_PASE).
 SALT_PASE = "portal-piccolina-sso-v1"
+# Para la consulta de avisos (distinta, así un pedido de avisos no sirve para entrar).
+SALT_AVISOS = "portal-piccolina-avisos-v1"
 VIGENCIA_PASE = 60          # segundos que vale un pase
 DURACION_SESION = 3600      # la sesión abierta por el Portal dura 1 hora
 GRACIA_FORMULARIOS = 900    # 15 min extra para no perder un formulario a medio guardar
@@ -134,7 +136,7 @@ def _es_navegacion():
 
 
 def init_portal_sso(app, buscar_usuario, iniciar_sesion, prefijo="",
-                    endpoint_login="auth.login", endpoint_logout="auth.logout"):
+                    endpoint_login="auth.login", endpoint_logout="auth.logout", avisos=None):
     """
     buscar_usuario(identificador) → el usuario local ACTIVO, o None.
     iniciar_sesion(usuario)       → arma la sesión igual que el login normal
@@ -143,6 +145,10 @@ def init_portal_sso(app, buscar_usuario, iniciar_sesion, prefijo="",
                                     (Vencimientos: "/vencimientos").
     endpoint_login                → la pantalla de login del dashboard.
     endpoint_logout               → la ruta de "cerrar sesión" del dashboard.
+    avisos(usuario)               → opcional. Lista de pendientes para mostrar
+                                    en el botón del Portal:
+                                    [{"texto": "3 pedidos a confirmar",
+                                      "cantidad": 3, "url": "/pedidos?..."}]
     """
     bp = Blueprint("portal_sso", __name__)
 
@@ -187,6 +193,37 @@ def init_portal_sso(app, buscar_usuario, iniciar_sesion, prefijo="",
         # Marca este navegador como "usa el Portal" (para el salto automático).
         resp.set_cookie(COOKIE_MARCA, "1", max_age=DURACION_MARCA, httponly=True,
                         secure=request.is_secure, samesite="Lax")
+        return resp
+
+    @bp.route("/sso/avisos")
+    def ver_avisos():
+        """
+        El Portal pregunta cuántos pendientes tiene una persona. El pedido viene
+        firmado con la misma llave (pero otra "sal", así no sirve como pase de
+        entrada). Solo devuelve textos y cantidades, nunca datos sensibles.
+        """
+        cfg = _config()
+        if not cfg:
+            abort(404)
+        try:
+            datos = URLSafeTimedSerializer(cfg["secreto"], salt=SALT_AVISOS).loads(
+                request.args.get("t", ""), max_age=VIGENCIA_PASE)
+        except (BadSignature, SignatureExpired):
+            return jsonify({"error": "firma inválida"}), 403
+        if not isinstance(datos, dict) or datos.get("d") != cfg["slug"]:
+            return jsonify({"error": "otro sistema"}), 403
+        identificador = cfg["mapa"].get(str(datos.get("u", "")).lower())
+        usuario = buscar_usuario(identificador) if identificador else None
+        if not usuario or avisos is None:
+            return jsonify({"avisos": []})
+        lista = []
+        for a in avisos(usuario) or []:
+            cantidad = int(a.get("cantidad") or 0)
+            if cantidad > 0:
+                url = _ruta_segura(a.get("url")) or ""
+                lista.append({"texto": str(a.get("texto", ""))[:80], "cantidad": cantidad, "url": url})
+        resp = jsonify({"avisos": lista})
+        resp.headers["Cache-Control"] = "no-store"
         return resp
 
     app.register_blueprint(bp, url_prefix=prefijo or None)
