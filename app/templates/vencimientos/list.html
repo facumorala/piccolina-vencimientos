@@ -139,8 +139,14 @@
       }
       function setRango(opcion) {
         const form = document.getElementById('form-filtros');
-        const hoy = new Date();
-        const ymd = (d) => d.toISOString().slice(0, 10);
+        // "Hoy" según el reloj de Buenos Aires (no el del navegador ni UTC):
+        // 'en-CA' da el formato AAAA-MM-DD.
+        const hoyStr = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Argentina/Buenos_Aires'}).format(new Date());
+        const [hA, hM, hD] = hoyStr.split('-').map(Number);
+        const hoy = new Date(hA, hM - 1, hD);
+        // Fecha -> 'AAAA-MM-DD' con los números locales (toISOString la pasaba a UTC).
+        const dos = (n) => String(n).padStart(2, '0');
+        const ymd = (d) => `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
         let desde = '', hasta = '';
         if (opcion === 'hoy') {
           desde = hasta = ymd(hoy);

@@ -12,6 +12,9 @@ Decisiones de diseño documentadas:
   fecha_vencimiento (cuándo pagar), fecha_pago (cuándo se pagó efectivamente).
 """
 from datetime import datetime, date
+
+# Hora de Buenos Aires para las columnas "creado/actualizado" (Railway corre en UTC).
+from tiempo import ahora_ar
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, Date, DateTime,
     Numeric, ForeignKey, Text, Index, LargeBinary, inspect, text,
@@ -41,7 +44,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     rol = Column(String(20), nullable=False, default="contadoras")  # 'facu' | 'contadoras'
     active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=ahora_ar, nullable=False)
     last_login = Column(DateTime)  # se actualiza en cada login exitoso
 
 
@@ -117,8 +120,8 @@ class Vencimiento(Base):
 
     # Otros
     notas = Column(Text, nullable=True)
-    creado_en = Column(DateTime, default=datetime.utcnow, nullable=False)
-    actualizado_en = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    creado_en = Column(DateTime, default=ahora_ar, nullable=False)
+    actualizado_en = Column(DateTime, default=ahora_ar, onupdate=ahora_ar, nullable=False)
 
     plan = relationship("Plan", back_populates="vencimientos_cubiertos", foreign_keys=[plan_id])
 
@@ -146,7 +149,7 @@ class Plan(Base):
     estado = Column(String(20), nullable=False, default="activo")  # ver ESTADOS_PLAN
 
     notas = Column(Text, nullable=True)
-    creado_en = Column(DateTime, default=datetime.utcnow, nullable=False)
+    creado_en = Column(DateTime, default=ahora_ar, nullable=False)
 
     # Vencimientos generados automáticamente al crear el plan (las cuotas)
     # son Vencimientos con plan_id apuntando a este plan y plan_cuota_nro.
@@ -191,8 +194,8 @@ class Ficha(Base):
     contactos = Column(Text, nullable=True)
     notas = Column(Text, nullable=True)
 
-    creado_en = Column(DateTime, default=datetime.utcnow, nullable=False)
-    actualizado_en = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    creado_en = Column(DateTime, default=ahora_ar, nullable=False)
+    actualizado_en = Column(DateTime, default=ahora_ar, onupdate=ahora_ar, nullable=False)
     actualizado_por_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     actualizado_por = relationship("User")
@@ -217,7 +220,7 @@ class LogActividad(Base):
     plan_id = Column(Integer, ForeignKey("planes.id", ondelete="SET NULL"), nullable=True)
     descripcion = Column(String(400), nullable=False)
     notificado_telegram = Column(Boolean, default=False, nullable=False)
-    creado_en = Column(DateTime, default=datetime.utcnow, nullable=False)
+    creado_en = Column(DateTime, default=ahora_ar, nullable=False)
 
     user = relationship("User")
 

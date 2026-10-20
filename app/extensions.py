@@ -4,18 +4,21 @@ Patrón idéntico al Mayorista para mantener consistencia entre dashboards.
 """
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta, timezone
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-# Zona horaria Argentina (UTC-3)
+# Zona horaria Argentina (UTC-3). La usa el scheduler (APScheduler) para
+# programar los avisos en hora de Buenos Aires. Para "ahora"/"hoy" usar
+# tiempo.ahora_ar() / tiempo.hoy_ar().
 AR_TZ = timezone(timedelta(hours=-3))
 
 
 def today_ar() -> date:
-    """Fecha de hoy en hora argentina."""
-    return datetime.now(AR_TZ).date()
+    """Fecha de hoy en hora argentina (atajo a tiempo.hoy_ar)."""
+    from tiempo import hoy_ar
+    return hoy_ar()
 
 
 # Paths del proyecto

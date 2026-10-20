@@ -15,13 +15,14 @@ faltantes) NO cambian — siguen siendo el estado actual. Esto permite que
 el dashboard Financiero linkee al home con un mes preseleccionado para
 auditar.
 """
-from datetime import datetime, timedelta, date as _date
+from datetime import timedelta, date as _date
 from decimal import Decimal
 
 from flask import Blueprint, render_template, redirect, request, url_for
 from sqlalchemy import func
 
-from extensions import get_db, today_ar, AR_TZ
+from extensions import get_db, today_ar
+from tiempo import ahora_ar
 from models import Vencimiento, Plan
 from auth_helpers import login_required
 
@@ -53,7 +54,7 @@ def root():
 def dashboard():
     db = get_db()
     hoy = today_ar()
-    hora_actual = datetime.now(AR_TZ).hour
+    hora_actual = ahora_ar().hour
 
     # Mes de referencia (querystring o el actual). Solo afecta los totales
     # mensuales — los KPIs de "ahora" siguen usando hoy.

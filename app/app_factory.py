@@ -86,8 +86,8 @@ def create_app() -> Flask:
 
     def _sesion_desde_portal(user):
         # Igual que el login normal (routes/auth.py).
-        from datetime import datetime as _dt
-        user.last_login = _dt.utcnow()
+        from tiempo import ahora_ar as _ahora_ar
+        user.last_login = _ahora_ar()  # hora de Buenos Aires
         _get_db().commit()
         session.clear()
         session["user_id"] = user.id

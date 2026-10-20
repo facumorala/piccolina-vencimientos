@@ -1,5 +1,5 @@
 """Auth: /login y /logout. Session manual con bcrypt."""
-from datetime import datetime
+from tiempo import ahora_ar
 
 import bcrypt
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
@@ -23,7 +23,7 @@ def login():
         db = get_db()
         user = db.query(User).filter_by(username=username, active=True).first()
         if user and bcrypt.checkpw(password.encode(), user.password_hash.encode()):
-            user.last_login = datetime.utcnow()
+            user.last_login = ahora_ar()  # hora de Buenos Aires
             db.commit()
             session.permanent = True
             session["user_id"] = user.id

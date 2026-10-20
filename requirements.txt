@@ -9,3 +9,7 @@ python-telegram-bot==21.3
 apscheduler==3.10.4
 gunicorn==21.2.0
 psycopg[binary]>=3.2.0
+
+# Base de zonas horarias para zoneinfo (hora de Buenos Aires en app/tiempo.py).
+# En Windows y en algunas imágenes de Railway no viene incluida.
+tzdata>=2024.1
