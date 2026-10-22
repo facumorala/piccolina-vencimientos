@@ -56,6 +56,14 @@ def list_view():
     f_fecha_hasta = _parse_date(request.args.get("fecha_hasta"))
     f_periodo_texto = (request.args.get("periodo_texto") or "").strip()
 
+    # Atajo "?dia=AAAA-MM-DD" = desde y hasta ese mismo día (por fecha de
+    # vencimiento). Lo usa el aviso push "Vence hoy" del Portal: el Portal no
+    # deja pasar dos parámetros en la ruta del aviso, así que va uno solo.
+    f_dia = _parse_date(request.args.get("dia"))
+    if f_dia:
+        f_fecha_tipo = "vencimiento"
+        f_fecha_desde = f_fecha_hasta = f_dia
+
     rango_activo = (f_fecha_desde or f_fecha_hasta) and f_fecha_tipo in ("vencimiento", "pago")
     periodo_activo = f_fecha_tipo == "periodo" and f_periodo_texto
 

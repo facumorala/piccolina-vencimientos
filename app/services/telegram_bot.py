@@ -11,6 +11,10 @@ Funcionalidades:
    - /total_mes
    - /vencidos
 
+⚠️ Desde oct-2026, con AVISOS_POR_PORTAL="1" los recordatorios automáticos
+NO salen de acá sino por el Portal (services/avisos_portal.py); este archivo
+queda solo para los comandos y para cuando el interruptor está apagado.
+
 Implementación: skeleton inicial. La conexión asyncio + polling se hace cuando
 TELEGRAM_BOT_TOKEN está seteado.
 """
