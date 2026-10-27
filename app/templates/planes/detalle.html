@@ -8,19 +8,43 @@
         <div class="smcaps mb-2" style="color: var(--brand);">· FINANCIACIÓN · {{ plan.fuente }} · {{ plan.estado | upper }} ·</div>
         <h1 class="huge" style="font-size: clamp(28px, 3.8vw, 44px);">{{ plan.nombre }}</h1>
       </div>
-      <div class="flex gap-2">
-        <a class="btn btn-ghost" href="{{ url_for('planes.list_view') }}">← Volver</a>
+      <div class="flex gap-2 flex-wrap">
+        {% if plan.archivado %}
+          <a class="btn btn-ghost" href="{{ url_for('planes.list_view', archivados=1) }}">← Archivados</a>
+          <form method="post" action="{{ url_for('planes.desarchivar', pid=plan.id) }}" style="display: inline;">
+            <button class="btn btn-ghost" type="submit">Desarchivar</button>
+          </form>
+        {% else %}
+          <a class="btn btn-ghost" href="{{ url_for('planes.list_view') }}">← Volver</a>
+          <button class="btn btn-ghost" type="button" onclick="abrirModal('modal-archivar')">Archivar</button>
+        {% endif %}
         <a class="btn btn-primary" href="{{ url_for('planes.editar', pid=plan.id) }}">✎ Editar plan</a>
       </div>
     </div>
   </section>
 
-  {# ── KPIs del plan ───────────────────────────────────────────────────── #}
+  {% if plan.archivado %}
+    <div class="card mb-6" style="background: var(--brand-soft);">
+      <strong>Archivado el {{ plan.archivado_en | fecha }}.</strong>
+      {% if plan.archivado_detalle %}
+        <span style="color: var(--ink-2); white-space: pre-line;">{{ plan.archivado_detalle }}</span>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {# ── KPIs del plan: los totales viven acá (en la lista solo va lo del día a día) #}
+  {# Se suman los importes reales de cada cuota: en los créditos bancarios cambian mes a mes. #}
+  {# Los montos van un poco más chicos y en un solo renglón (en millones se partían en dos) #}
+  {% macro _monto(v) %}<span style="font-size: 0.72em; white-space: nowrap;">{{ v | money }}</span>{% endmacro %}
   {% set kpis = [
-    {'eyebrow': 'CUOTA MENSUAL', 'value_html': plan.monto_cuota | money},
-    {'eyebrow': 'CUOTAS TOTALES', 'value_html': plan.cuotas_totales | string},
-    {'eyebrow': 'DÍA DEL MES', 'value_html': plan.dia_del_mes | string},
-    {'eyebrow': 'PRIMERA CUOTA', 'value_html': plan.fecha_primera_cuota | fecha},
+    {'eyebrow': 'CUOTA MENSUAL', 'value_html': _monto(plan.monto_cuota),
+     'hint': 'día ' ~ plan.dia_del_mes ~ ' de cada mes · 1ra: ' ~ (plan.fecha_primera_cuota | fecha)},
+    {'eyebrow': 'TOTAL DE LA FINANCIACIÓN', 'value_html': _monto(total_credito),
+     'hint': plan.cuotas_totales ~ ' cuotas'},
+    {'eyebrow': 'PAGADO', 'value_html': _monto(total_pagado),
+     'hint': n_pagadas ~ ' de ' ~ plan.cuotas_totales ~ ' cuotas'},
+    {'eyebrow': 'RESTA PAGAR', 'value_html': _monto(resta_pagar),
+     'hint': n_impagas ~ ' cuota' ~ ('s' if n_impagas != 1 else '') ~ ' pendiente' ~ ('s' if n_impagas != 1 else '')},
   ] %}
   {% include 'identidad/_kpi_strip.html' %}
 
@@ -176,6 +200,36 @@
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-pagar')">Cancelar</button>
           <button class="btn btn-primary" type="submit">Confirmar pago</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ──────────────────────────────────────────────────────────────────── #}
+  {# MODAL: Archivar financiación                                          #}
+  {# ──────────────────────────────────────────────────────────────────── #}
+  <div id="modal-archivar" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 440px;">
+      <h2 class="huge mb-2" style="font-size: 22px;">Archivar financiación</h2>
+      <p class="text-[13px] mb-3" style="color: var(--ink-2);">
+        "{{ plan.nombre }}" sale de la lista de planes activos y pasa a Archivados.
+      </p>
+      {% if n_impagas %}
+        <p class="text-[13px] mb-3" style="color: #8B1B1B;">
+          ⚠️ Todavía tiene {{ n_impagas }} cuota{{ 's' if n_impagas != 1 }} sin pagar
+          ({{ resta_pagar | money }}). Van a seguir apareciendo en el calendario de vencimientos.
+        </p>
+      {% endif %}
+      <form method="post" action="{{ url_for('planes.archivar', pid=plan.id) }}">
+        <label>Detalle (opcional)</label>
+        <textarea class="input-box" name="detalle" rows="3"
+                  placeholder="ej: se pagó la última cuota con eCheq · cancelado anticipado">{{ plan.archivado_detalle or '' }}</textarea>
+        <p class="text-[11px] mt-2" style="color: var(--ink-3);">
+          No se borra nada y lo podés desarchivar cuando quieras.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-archivar')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Archivar</button>
         </div>
       </form>
     </div>

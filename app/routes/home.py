@@ -171,7 +171,7 @@ def dashboard():
     )
 
     # ── FINANCIACIONES (planes activos con progreso) ─────────────────────────
-    planes_activos = db.query(Plan).filter_by(estado="activo").all()
+    planes_activos = db.query(Plan).filter_by(estado="activo", archivado=False).all()
     planes_data = []
     for p in planes_activos:
         cuotas_pagas = (

@@ -14,6 +14,7 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for
 from sqlalchemy import func
 
 from extensions import get_db, today_ar
+from tiempo import ahora_ar
 from models import Plan, Vencimiento, LogActividad, FUENTES_PLAN, ESTADOS_PLAN
 from auth_helpers import login_required, current_user
 from nav_helpers import redirect_back
@@ -24,31 +25,63 @@ bp = Blueprint("planes", __name__)
 @bp.route("/")
 @login_required
 def list_view():
+    """
+    Lista de financiaciones. Por cada plan muestra lo que importa para el día a
+    día: si debe alguna cuota (cuántas, cuánta plata, hace cuánto venció) o, si
+    está al día, cuál es la próxima. El botón "Pagar" de cada fila paga la cuota
+    impaga MÁS VIEJA sin tener que entrar al detalle.
+
+    `?archivados=1` muestra las financiaciones archivadas (las terminadas que
+    Facu sacó de la vista principal).
+    """
     db = get_db()
-    planes = db.query(Plan).order_by(Plan.estado.asc(), Plan.creado_en.desc()).all()
+    ver_archivados = request.args.get("archivados") == "1"
+    hoy = today_ar()
+
+    planes = db.query(Plan).filter(Plan.archivado.is_(ver_archivados))
+    if ver_archivados:
+        planes = planes.order_by(Plan.archivado_en.desc().nullslast(), Plan.nombre.asc())
+    else:
+        planes = planes.order_by(Plan.estado.asc(), Plan.creado_en.desc())
+    planes = planes.all()
+    n_archivados = db.query(func.count(Plan.id)).filter(Plan.archivado.is_(True)).scalar() or 0
+
+    # Dos consultas para toda la lista (no dos por plan): cuántas pagas tiene
+    # cada plan, y todas las cuotas impagas ordenadas de la más vieja a la nueva.
+    pagas_por_plan = dict(
+        db.query(Vencimiento.plan_id, func.count(Vencimiento.id))
+        .filter(Vencimiento.plan_cuota_nro.isnot(None), Vencimiento.pagado.is_(True))
+        .group_by(Vencimiento.plan_id).all()
+    )
+    impagas_por_plan = {}
+    for c in (db.query(Vencimiento)
+              .filter(Vencimiento.plan_id.isnot(None),
+                      Vencimiento.plan_cuota_nro.isnot(None),
+                      Vencimiento.pagado.is_(False))
+              .order_by(Vencimiento.fecha_vencimiento.asc(), Vencimiento.plan_cuota_nro.asc())
+              .all()):
+        impagas_por_plan.setdefault(c.plan_id, []).append(c)
 
     data = []
     for p in planes:
-        cuotas_pagas = db.query(func.count(Vencimiento.id)).filter(
-            Vencimiento.plan_id == p.id,
-            Vencimiento.plan_cuota_nro.isnot(None),
-            Vencimiento.pagado.is_(True),
-        ).scalar() or 0
-        cuotas_impagas_vencidas = db.query(func.count(Vencimiento.id)).filter(
-            Vencimiento.plan_id == p.id,
-            Vencimiento.plan_cuota_nro.isnot(None),
-            Vencimiento.pagado.is_(False),
-            Vencimiento.fecha_vencimiento < today_ar(),
-        ).scalar() or 0
+        impagas = impagas_por_plan.get(p.id, [])
+        vencidas = [c for c in impagas if c.fecha_vencimiento and c.fecha_vencimiento < hoy]
         data.append({
             "plan": p,
-            "cuotas_pagas": cuotas_pagas,
-            "cuotas_impagas_vencidas": cuotas_impagas_vencidas,
-            "total_calculado": p.monto_cuota * p.cuotas_totales,
+            "cuotas_pagas": pagas_por_plan.get(p.id, 0),
+            "vencidas": vencidas,
+            "deuda": sum((c.monto or 0) for c in vencidas),
+            # La que paga el botón "Pagar": la impaga más vieja (vencida o no).
+            "a_pagar": impagas[0] if impagas else None,
+            "n_impagas": len(impagas),
         })
 
+    # Resumen arriba de la tabla: todo lo que está vencido sin pagar.
+    total_vencidas = sum(len(d["vencidas"]) for d in data)
+    total_deuda = sum(d["deuda"] for d in data)
+
     # Vencimientos disponibles para tildar al crear un plan (no pagados, sin plan)
-    disponibles = db.query(Vencimiento).filter(
+    disponibles = [] if ver_archivados else db.query(Vencimiento).filter(
         Vencimiento.plan_id.is_(None),
         Vencimiento.pagado.is_(False),
     ).order_by(Vencimiento.categoria.asc(), Vencimiento.fecha_vencimiento.asc()).all()
@@ -56,6 +89,10 @@ def list_view():
     return render_template(
         "planes/list.html",
         data=data,
+        ver_archivados=ver_archivados,
+        n_archivados=n_archivados,
+        total_vencidas=total_vencidas,
+        total_deuda=total_deuda,
         disponibles=disponibles,
         fuentes=FUENTES_PLAN,
         estados=ESTADOS_PLAN,
@@ -83,9 +120,20 @@ def detalle(pid):
         Vencimiento.plan_id.is_(None),
         Vencimiento.pagado.is_(False),
     ).order_by(Vencimiento.fecha_vencimiento.asc()).all()
+    # Totales con el importe REAL de cada cuota (en los créditos bancarios cada
+    # cuota tiene el suyo; cuota del plan x cantidad daría otro número).
+    total_credito = sum((c.monto or 0) for c in cuotas)
+    total_pagado = sum((c.monto or 0) for c in cuotas if c.pagado)
+    n_pagadas = sum(1 for c in cuotas if c.pagado)
+    n_impagas = len(cuotas) - n_pagadas
     return render_template(
         "planes/detalle.html",
         plan=p,
+        total_credito=total_credito,
+        total_pagado=total_pagado,
+        resta_pagar=total_credito - total_pagado,
+        n_pagadas=n_pagadas,
+        n_impagas=n_impagas,
         cuotas=cuotas,
         cubiertos=cubiertos,
         disponibles=disponibles,
@@ -366,6 +414,51 @@ def eliminar(pid):
     )
     extra = f" {n_cubiertos} vencimiento(s) volvieron a pendientes." if n_cubiertos else ""
     flash(f"Plan '{nombre}' eliminado: se borraron {n_cuotas} cuotas.{extra}", "success")
+    return redirect(url_for("planes.list_view"))
+
+
+# ─── Archivar / Desarchivar ───────────────────────────────────────────────────
+
+@bp.route("/<int:pid>/archivar", methods=["POST"])
+@login_required
+def archivar(pid):
+    """
+    Saca la financiación de la lista principal y la pasa a "Archivados", con un
+    detalle libre (ej: "cancelado anticipado", "se pagó la última con eCheq").
+    No borra ni toca ninguna cuota: si quedara alguna impaga, sigue apareciendo
+    en el calendario de vencimientos (la pantalla de archivar lo avisa).
+    Si el plan estaba "activo", pasa a "terminado".
+    """
+    db = get_db()
+    p = db.get(Plan, pid)
+    if not p:
+        flash("Plan no encontrado.", "error")
+        return redirect(url_for("planes.list_view"))
+    p.archivado = True
+    p.archivado_en = ahora_ar()
+    p.archivado_detalle = (request.form.get("detalle") or "").strip() or None
+    if p.estado == "activo":
+        p.estado = "terminado"
+    db.commit()
+    _log_actividad(db, "archivar_plan", None, p.id, f"Archivó el plan {p.nombre}")
+    flash(f"'{p.nombre}' archivado. Lo encontrás en Archivados.", "success")
+    return redirect(url_for("planes.list_view"))
+
+
+@bp.route("/<int:pid>/desarchivar", methods=["POST"])
+@login_required
+def desarchivar(pid):
+    """Devuelve una financiación archivada a la lista principal (el detalle queda guardado)."""
+    db = get_db()
+    p = db.get(Plan, pid)
+    if not p:
+        flash("Plan no encontrado.", "error")
+        return redirect(url_for("planes.list_view"))
+    p.archivado = False
+    p.archivado_en = None
+    db.commit()
+    _log_actividad(db, "desarchivar_plan", None, p.id, f"Desarchivó el plan {p.nombre}")
+    flash(f"'{p.nombre}' volvió a la lista de financiaciones.", "success")
     return redirect(url_for("planes.list_view"))
 
 

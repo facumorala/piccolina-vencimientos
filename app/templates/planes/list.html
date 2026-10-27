@@ -6,22 +6,52 @@
     <div class="flex items-end justify-between flex-wrap gap-4">
       <div>
         <div class="smcaps mb-2" style="color: var(--brand);">· FINANCIACIONES ·</div>
-        <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Planes activos</h1>
-        <p class="thin mt-3 text-[15px]" style="color: var(--ink-2);">
-          Acá viven los planes de pago de AFIP y cualquier otra financiación. Cuando creás un plan,
-          el sistema genera sus cuotas como vencimientos en categoría <em>Financiaciones</em>
-          y podés vincular los vencimientos viejos que el plan cubre.
-        </p>
+        {% if ver_archivados %}
+          <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Archivados</h1>
+          <p class="thin mt-3 text-[15px]" style="color: var(--ink-2);">
+            Financiaciones terminadas que sacaste de la lista principal. No se borró nada:
+            entrando a cada una ves todas sus cuotas.
+          </p>
+        {% else %}
+          <h1 class="huge" style="font-size: clamp(32px, 4vw, 48px);">Planes activos</h1>
+          <p class="thin mt-3 text-[15px]" style="color: var(--ink-2);">
+            Acá viven los planes de pago de AFIP y cualquier otra financiación. Cuando creás un plan,
+            el sistema genera sus cuotas como vencimientos en categoría <em>Financiaciones</em>
+            y podés vincular los vencimientos viejos que el plan cubre.
+          </p>
+        {% endif %}
       </div>
-      <button class="btn btn-primary" type="button"
-              onclick="document.getElementById('modal-plan').style.display='grid'">
-        + Nuevo plan
-      </button>
+      <div class="flex gap-2 flex-wrap">
+        {% if ver_archivados %}
+          <a class="btn btn-ghost" href="{{ url_for('planes.list_view') }}">← Planes activos</a>
+        {% else %}
+          <a class="btn btn-ghost" href="{{ url_for('planes.list_view', archivados=1) }}">
+            Archivados{% if n_archivados %} ({{ n_archivados }}){% endif %}
+          </a>
+          <button class="btn btn-primary" type="button"
+                  onclick="document.getElementById('modal-plan').style.display='grid'">
+            + Nuevo plan
+          </button>
+        {% endif %}
+      </div>
     </div>
   </section>
 
+  {# ── Aviso de deuda: todo lo vencido sin pagar, en una línea ────────── #}
+  {% if not ver_archivados and total_vencidas %}
+    <div class="card mb-6" style="background: #FFF4F4; border-color: #F2C4C4;">
+      <strong style="color: #8B1B1B;">
+        Debés {{ total_vencidas }} cuota{{ 's' if total_vencidas != 1 }} vencida{{ 's' if total_vencidas != 1 }}
+        por {{ total_deuda | money }} en total.
+      </strong>
+      <span style="color: var(--ink-2);">Están marcadas en rojo abajo; con "Pagar" las registrás sin entrar al plan.</span>
+    </div>
+  {% endif %}
+
   {% if not data %}
-    <p style="color: var(--ink-3);">No hay planes cargados todavía.</p>
+    <p style="color: var(--ink-3);">
+      {% if ver_archivados %}No hay financiaciones archivadas.{% else %}No hay planes cargados todavía.{% endif %}
+    </p>
   {% endif %}
 
   {% if data %}
@@ -32,15 +62,20 @@
           <th>Fuente</th>
           <th>Progreso</th>
           <th>Cuota mensual</th>
-          <th>Total calculado</th>
-          <th>Impagas</th>
+          {% if ver_archivados %}
+            <th>Archivado</th>
+            <th>Detalle</th>
+          {% else %}
+            <th>Situación</th>
+          {% endif %}
           <th>Estado</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for d in data %}
-          <tr>
+          {% set debe = d.vencidas | length > 0 %}
+          <tr {% if debe %}style="background: #FFF7F7;"{% endif %}>
             <td>
               <a href="{{ url_for('planes.detalle', pid=d.plan.id) }}"
                  style="color: var(--brand); text-decoration: none; font-weight: 500;">
@@ -50,29 +85,157 @@
             <td style="color: var(--ink-2);">{{ d.plan.fuente }}</td>
             <td><span class="num">{{ d.cuotas_pagas }}/{{ d.plan.cuotas_totales }}</span></td>
             <td class="num">{{ d.plan.monto_cuota | money }}</td>
-            <td class="num">{{ d.total_calculado | money }}</td>
-            <td>
-              {% if d.cuotas_impagas_vencidas > 0 %}
-                <span class="sem sem-rojo">{{ d.cuotas_impagas_vencidas }}</span>
-              {% else %}
-                <span style="color: var(--ink-3);">—</span>
-              {% endif %}
-            </td>
+
+            {% if ver_archivados %}
+              <td class="num" style="color: var(--ink-2);">
+                {{ d.plan.archivado_en | fecha if d.plan.archivado_en else '—' }}
+              </td>
+              <td style="color: var(--ink-2); max-width: 320px; white-space: pre-line;">{{ d.plan.archivado_detalle or '—' }}</td>
+            {% else %}
+              {# Situación: lo que se debe (rojo) o la próxima cuota (gris) #}
+              <td style="font-size: 13px;">
+                {% if debe %}
+                  {% set primera = d.vencidas[0] %}
+                  <div style="color: #8B1B1B; font-weight: 600;">
+                    Debés {{ d.vencidas | length }} cuota{{ 's' if d.vencidas | length != 1 }} · {{ d.deuda | money }}
+                  </div>
+                  <div style="color: #8B1B1B; font-size: 12px;">
+                    {% if d.vencidas | length == 1 %}
+                      Cuota {{ primera.plan_cuota_nro }}/{{ d.plan.cuotas_totales }} · venció el {{ primera.fecha_vencimiento | fecha }}
+                      ({{ primera.fecha_vencimiento | label_estado }})
+                    {% else %}
+                      La más vieja venció el {{ primera.fecha_vencimiento | fecha }}
+                      ({{ primera.fecha_vencimiento | label_estado }})
+                    {% endif %}
+                  </div>
+                {% elif d.a_pagar %}
+                  <div style="color: var(--ink-2);">
+                    Al día · próxima {{ d.a_pagar.fecha_vencimiento | fecha }}
+                  </div>
+                  <div style="color: var(--ink-3); font-size: 12px;">
+                    Cuota {{ d.a_pagar.plan_cuota_nro }}/{{ d.plan.cuotas_totales }} · {{ d.a_pagar.fecha_vencimiento | label_estado }}
+                  </div>
+                {% else %}
+                  <span style="color: #1F6F1F;">✓ Todas las cuotas pagas</span>
+                {% endif %}
+              </td>
+            {% endif %}
+
             <td>
               <span class="tag-pill" style="background: var(--brand-soft); color: var(--brand);">
                 {{ d.plan.estado }}
               </span>
             </td>
-            <td style="white-space: nowrap;">
-              <a class="btn-link" href="{{ url_for('planes.detalle', pid=d.plan.id) }}">Ver →</a>
-              <a class="btn-link" style="margin-left: 10px; color: var(--ink-3);"
-                 href="{{ url_for('planes.editar', pid=d.plan.id) }}">Editar</a>
+            <td style="white-space: nowrap; text-align: right;">
+              {% if ver_archivados %}
+                <form method="post" action="{{ url_for('planes.desarchivar', pid=d.plan.id) }}" style="display: inline;">
+                  <button class="btn-link" type="submit" style="color: var(--ink-3);">Desarchivar</button>
+                </form>
+              {% elif d.a_pagar %}
+                {% set c = d.a_pagar %}
+                <button class="btn {{ 'btn-plum' if debe else 'btn-primary' }}" type="button"
+                        style="padding: 5px 14px; font-size: 11px;"
+                        data-vid="{{ c.id }}"
+                        data-plan="{{ d.plan.nombre }}"
+                        data-cuota="{{ c.plan_cuota_nro }}/{{ d.plan.cuotas_totales }}"
+                        data-monto="{{ c.monto | money }}"
+                        data-fecha="{{ c.fecha_vencimiento | fecha }}"
+                        onclick="abrirPagar(this)">
+                  Pagar {{ c.plan_cuota_nro }}/{{ d.plan.cuotas_totales }}
+                </button>
+              {% else %}
+                {# Sin cuotas pendientes = financiación terminada: se puede archivar #}
+                <button class="btn btn-ghost" type="button"
+                        style="padding: 5px 14px; font-size: 11px;"
+                        data-pid="{{ d.plan.id }}"
+                        data-plan="{{ d.plan.nombre }}"
+                        onclick="abrirArchivar(this)">
+                  Archivar
+                </button>
+              {% endif %}
+              <a class="btn-link" style="margin-left: 10px;" href="{{ url_for('planes.detalle', pid=d.plan.id) }}">Ver →</a>
+              {% if not ver_archivados %}
+                <a class="btn-link" style="margin-left: 10px; color: var(--ink-3);"
+                   href="{{ url_for('planes.editar', pid=d.plan.id) }}">Editar</a>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   {% endif %}
+
+  {# ── Modal: pagar la cuota más vieja sin entrar al detalle ─────────────── #}
+  <div id="modal-pagar" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 420px;">
+      <h2 class="huge mb-2" style="font-size: 22px;">Pagar cuota</h2>
+      <p id="modal-pagar-info" class="text-[13px] mb-4" style="color: var(--ink-2);"></p>
+      <form id="form-pagar" method="post" enctype="multipart/form-data">
+        <label>Fecha de pago</label>
+        <input class="input-box" name="fecha_pago" type="date" required value="{{ today_ar() | string }}">
+
+        <label>Método</label>
+        <select class="input-box" name="metodo_pago">
+          <option value="">— elegir —</option>
+          <option value="efectivo">Efectivo</option>
+          <option value="transfer">Transferencia</option>
+          <option value="debito_automatico">Débito automático</option>
+          <option value="tarjeta">Tarjeta</option>
+        </select>
+
+        <label>Comprobante (opcional · foto o PDF)</label>
+        <input class="input-box" name="comprobante" type="file" accept="image/*,application/pdf">
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-pagar')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Confirmar pago</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Modal: archivar financiación terminada ────────────────────────────── #}
+  <div id="modal-archivar" class="modal-overlay" style="display: none;">
+    <div class="modal" style="max-width: 440px;">
+      <h2 class="huge mb-2" style="font-size: 22px;">Archivar financiación</h2>
+      <p id="modal-archivar-info" class="text-[13px] mb-3" style="color: var(--ink-2);"></p>
+      <form id="form-archivar" method="post">
+        <label>Detalle (opcional)</label>
+        <textarea class="input-box" name="detalle" rows="3"
+                  placeholder="ej: se pagó la última cuota con eCheq · cancelado anticipado"></textarea>
+        <p class="text-[11px] mt-2" style="color: var(--ink-3);">
+          No se borra nada: pasa a "Archivados" con todas sus cuotas, y lo podés desarchivar cuando quieras.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" onclick="cerrarModal('modal-archivar')">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Archivar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function abrirModal(id)  { document.getElementById(id).style.display = 'grid'; }
+    function cerrarModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    // Pagar: arma el formulario con la cuota impaga más vieja de esa fila.
+    // Usa la misma ruta de pago que el detalle del plan y el calendario.
+    function abrirPagar(btn) {
+      const d = btn.dataset;
+      document.getElementById('form-pagar').action = '/vencimientos/' + d.vid + '/pagar';
+      document.getElementById('modal-pagar-info').textContent =
+        d.plan + ' · cuota ' + d.cuota + ' · ' + d.monto + ' · vence ' + d.fecha;
+      abrirModal('modal-pagar');
+    }
+
+    function abrirArchivar(btn) {
+      const d = btn.dataset;
+      document.getElementById('form-archivar').action = '/planes/' + d.pid + '/archivar';
+      document.getElementById('modal-archivar-info').textContent =
+        '"' + d.plan + '" sale de la lista de planes activos y pasa a Archivados.';
+      abrirModal('modal-archivar');
+    }
+  </script>
 
   {# ── Modal: nuevo plan ───────────────────────────────────────────────── #}
   <div id="modal-plan" class="modal-overlay" style="display: none;">

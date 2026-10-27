@@ -151,6 +151,13 @@ class Plan(Base):
     notas = Column(Text, nullable=True)
     creado_en = Column(DateTime, default=ahora_ar, nullable=False)
 
+    # Archivo (27-oct-2026): una financiación terminada sale de la lista
+    # principal y pasa a "Archivados", con un detalle libre de cómo se cerró.
+    # No toca las cuotas: es solo dónde se muestra el plan.
+    archivado = Column(Boolean, nullable=False, default=False)
+    archivado_en = Column(DateTime, nullable=True)
+    archivado_detalle = Column(Text, nullable=True)
+
     # Vencimientos generados automáticamente al crear el plan (las cuotas)
     # son Vencimientos con plan_id apuntando a este plan y plan_cuota_nro.
     cuotas = relationship(
@@ -285,6 +292,10 @@ def _aplicar_migraciones_ligeras(engine):
         ("users", "last_login", "TIMESTAMP"),
         # Marca "ya avisado por el Portal" de la actividad (oct-2026).
         ("log_actividad", "notificado_portal", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        # Archivar financiaciones terminadas (27-oct-2026).
+        ("planes", "archivado",         "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("planes", "archivado_en",      "TIMESTAMP"),
+        ("planes", "archivado_detalle", "TEXT"),
     ]
     insp = inspect(engine)
     columnas_recien_agregadas = set()
