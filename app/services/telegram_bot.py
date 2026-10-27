@@ -14,6 +14,8 @@ Funcionalidades:
 ⚠️ Desde oct-2026, con AVISOS_POR_PORTAL="1" los recordatorios automáticos
 NO salen de acá sino por el Portal (services/avisos_portal.py); este archivo
 queda solo para los comandos y para cuando el interruptor está apagado.
+Con AVISOS_POR_PORTAL="ambos" los recordatorios salen de acá como siempre
+Y ADEMÁS por el Portal.
 
 Implementación: skeleton inicial. La conexión asyncio + polling se hace cuando
 TELEGRAM_BOT_TOKEN está seteado.
@@ -154,8 +156,14 @@ def enviar_avisos_vencimientos():
 
 # ─── Avisos de actividad de Agus ──────────────────────────────────────────────
 
-def enviar_avisos_actividad_pendientes():
-    """Manda a Facu los LogActividad sin notificar."""
+def enviar_avisos_actividad_pendientes(marcar_portal: bool = True):
+    """
+    Manda a Facu los LogActividad sin notificar por Telegram.
+
+    `marcar_portal`: sin interruptor (solo Telegram) se marca también la del
+    Portal, así si después se pasa a "ambos" no se re-avisa lo viejo por push.
+    Con "ambos" va False: el Portal lleva su propia cuenta.
+    """
     chat_id = _get_facu_chat_id()
     if not chat_id:
         return
@@ -169,6 +177,8 @@ def enviar_avisos_actividad_pendientes():
             ok = _enviar_mensaje(chat_id, f"👤 Agus: {log.descripcion}")
             if ok:
                 log.notificado_telegram = True
+                if marcar_portal:
+                    log.notificado_portal = True
         db.commit()
     finally:
         db.close()

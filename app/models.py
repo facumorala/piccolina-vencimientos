@@ -220,6 +220,11 @@ class LogActividad(Base):
     plan_id = Column(Integer, ForeignKey("planes.id", ondelete="SET NULL"), nullable=True)
     descripcion = Column(String(400), nullable=False)
     notificado_telegram = Column(Boolean, default=False, nullable=False)
+    # Marca del aviso push por el Portal (oct-2026). Va aparte porque con
+    # AVISOS_POR_PORTAL=ambos salen los dos canales y cada uno lleva su propia
+    # cuenta de "ya avisado" (así ninguno repite ni le come avisos al otro).
+    # Con un solo canal activo, el que avisa marca las dos.
+    notificado_portal = Column(Boolean, default=False, nullable=False)
     creado_en = Column(DateTime, default=ahora_ar, nullable=False)
 
     user = relationship("User")
@@ -278,6 +283,8 @@ def _aplicar_migraciones_ligeras(engine):
         ("vencimientos", "comprobante_tipo",   "VARCHAR(100)"),
         # Último acceso de cada usuario, para la pantalla de gestión (05-jul-2026).
         ("users", "last_login", "TIMESTAMP"),
+        # Marca "ya avisado por el Portal" de la actividad (oct-2026).
+        ("log_actividad", "notificado_portal", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ]
     insp = inspect(engine)
     columnas_recien_agregadas = set()
@@ -298,6 +305,18 @@ def _aplicar_migraciones_ligeras(engine):
     # Backfill de periodo_desde / periodo_hasta para vencimientos viejos:
     # se intenta parsear el periodo_facturado actual. Los que no parsean
     # quedan en NULL y se completan cuando Facu edite cada vencimiento.
+    # La marca del Portal arranca igual que la de Telegram: lo que ya se avisó
+    # no se vuelve a avisar por push, y lo pendiente queda pendiente.
+    if ("log_actividad", "notificado_portal") in columnas_recien_agregadas:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "UPDATE log_actividad SET notificado_portal = notificado_telegram"
+                ))
+            print("[migracion] log_actividad.notificado_portal copiada de notificado_telegram.", flush=True)
+        except Exception as e:
+            print(f"[migracion] Backfill notificado_portal falló: {e}", flush=True)
+
     if ("vencimientos", "periodo_desde") in columnas_recien_agregadas:
         try:
             _backfill_periodo_estructurado(engine)

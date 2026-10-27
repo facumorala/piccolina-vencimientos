@@ -270,5 +270,191 @@ def _ids_registrados(prendido):
     return [c.kwargs["id"] for c in falso.add_job.call_args_list]
 
 
+# ═══ 3. Modo "ambos" = Telegram como siempre + push (hasta nov-2026) ═══════════
+
+def _env_valor(valor):
+    """Deja AVISOS_POR_PORTAL en `valor` (None = sin la variable)."""
+    entorno = {k: v for k, v in os.environ.items() if k != "AVISOS_POR_PORTAL"}
+    entorno["TELEGRAM_CHAT_ID_FACU"] = "123"
+    if valor is not None:
+        entorno["AVISOS_POR_PORTAL"] = valor
+    return mock.patch.dict(os.environ, entorno, clear=True)
+
+
+def _ids_con_valor(valor):
+    """Qué tareas programa el scheduler con ese valor del interruptor."""
+    falso = mock.MagicMock()
+    with _env_valor(valor), \
+            mock.patch.object(scheduler, "BackgroundScheduler", return_value=falso), \
+            mock.patch.object(scheduler, "_scheduler", None):
+        scheduler.start_scheduler()
+    return [c.kwargs["id"] for c in falso.add_job.call_args_list]
+
+
+class TestInterruptorDosCanales(unittest.TestCase):
+
+    def test_valores(self):
+        # (valor, push, telegram, solo_portal)
+        casos = [
+            (None, False, True, False), ("", False, True, False), ("0", False, True, False),
+            ("1", True, False, True), ("ambos", True, True, False), (" AMBOS ", True, True, False),
+        ]
+        for valor, push, tg, solo in casos:
+            with self.subTest(valor=valor), _env_valor(valor):
+                self.assertIs(avisos_portal.push_activo(), push)
+                self.assertIs(avisos_portal.telegram_activo(), tg)
+                self.assertIs(avisos_portal.avisos_por_portal(), solo)
+
+
+class TestAmbos(BaseAvisos):
+
+    def pendientes_de(self, columna):
+        db = self.Session()
+        n = db.query(LogActividad).filter(getattr(LogActividad, columna).is_(False)).count()
+        db.close()
+        return n
+
+    def test_diario_manda_telegram_hoy_y_3_dias_y_push_de_hoy(self):
+        self.vto("IVA oct", 1000)
+        self.vto("IIBB oct", 500, dias=3)
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg, \
+                mock.patch.object(avisos_portal, "avisar") as portal:
+            scheduler._job_avisos_vencimientos()
+        textos = [c.args[1] for c in tg.call_args_list]
+        self.assertEqual(len(textos), 2)
+        self.assertIn("Vence HOY", textos[0])
+        self.assertIn("En 3 días vence", textos[1])
+        portal.assert_called_once()
+        self.assertEqual(portal.call_args.args[1], "⏰ Vence hoy: IVA oct — $1.000")
+
+    def test_diario_si_falla_el_portal_igual_sale_telegram(self):
+        self.vto("IVA oct", 1000)
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg, \
+                mock.patch.object(avisos_portal, "avisar", side_effect=RuntimeError("caído")):
+            scheduler._job_avisos_vencimientos()
+        self.assertEqual(tg.call_count, 1)
+
+    def test_resumen_lunes_sale_por_telegram(self):
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "enviar_resumen_semanal_facu") as resumen:
+            scheduler._job_resumen_lunes()
+        resumen.assert_called_once()
+
+    def test_scheduler_mismos_jobs_que_siempre_sin_duplicar(self):
+        ids = _ids_con_valor("ambos")
+        self.assertEqual(sorted(ids), ["avisos_actividad", "avisos_diarios", "resumen_lunes"])
+
+    def test_scheduler_1_y_vacio_no_cambian(self):
+        self.assertEqual(sorted(_ids_con_valor("1")), ["avisos_actividad", "avisos_diarios"])
+        self.assertEqual(sorted(_ids_con_valor(None)),
+                         ["avisos_actividad", "avisos_diarios", "resumen_lunes"])
+
+    def test_actividad_por_los_dos_y_cada_uno_marca_lo_suyo(self):
+        self.log("Cargó IVA")
+        self.log("Pagó IIBB")
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg, \
+                mock.patch.object(avisos_portal, "avisar", return_value={"ok": True}) as portal:
+            scheduler._job_avisos_actividad()
+            # Segunda tanda: no se repite nada por ningún lado
+            scheduler._job_avisos_actividad()
+        self.assertEqual(tg.call_count, 2)       # uno por log, como siempre
+        portal.assert_called_once()              # un push por tanda
+        self.assertEqual(self.pendientes_de("notificado_telegram"), 0)
+        self.assertEqual(self.pendientes_de("notificado_portal"), 0)
+
+    def test_portal_caido_no_repite_telegram_y_reintenta_push(self):
+        self.log("Cargó IVA")
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg, \
+                mock.patch.object(avisos_portal, "avisar", return_value=None):
+            scheduler._job_avisos_actividad()
+        self.assertEqual(tg.call_count, 1)
+        self.assertEqual(self.pendientes_de("notificado_telegram"), 0)
+        self.assertEqual(self.pendientes_de("notificado_portal"), 1)
+        # Vuelve el Portal: sale el push, Telegram no repite
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg2, \
+                mock.patch.object(avisos_portal, "avisar", return_value={"ok": True}) as portal2:
+            scheduler._job_avisos_actividad()
+        tg2.assert_not_called()
+        portal2.assert_called_once()
+        self.assertEqual(self.pendientes_de("notificado_portal"), 0)
+
+    def test_telegram_caido_no_repite_push_y_reintenta_telegram(self):
+        self.log("Cargó IVA")
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=False), \
+                mock.patch.object(avisos_portal, "avisar", return_value={"ok": True}):
+            scheduler._job_avisos_actividad()
+        self.assertEqual(self.pendientes_de("notificado_telegram"), 1)
+        self.assertEqual(self.pendientes_de("notificado_portal"), 0)
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg, \
+                mock.patch.object(avisos_portal, "avisar", return_value={"ok": True}) as portal:
+            scheduler._job_avisos_actividad()
+        tg.assert_called_once()
+        portal.assert_not_called()
+
+    def test_lo_avisado_sin_interruptor_no_se_repite_al_pasar_a_ambos(self):
+        self.log("Cargó IVA")
+        with _env_valor(None), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True), \
+                mock.patch.object(avisos_portal, "avisar") as portal:
+            scheduler._job_avisos_actividad()
+        portal.assert_not_called()
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg, \
+                mock.patch.object(avisos_portal, "avisar", return_value={"ok": True}) as portal:
+            scheduler._job_avisos_actividad()
+        tg.assert_not_called()
+        portal.assert_not_called()
+
+    def test_lo_avisado_con_1_no_se_repite_al_pasar_a_ambos(self):
+        self.log("Cargó IVA")
+        with _env_valor("1"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje") as tg, \
+                mock.patch.object(avisos_portal, "avisar", return_value={"ok": True}):
+            scheduler._job_avisos_actividad()
+        tg.assert_not_called()
+        with _env_valor("ambos"), \
+                mock.patch.object(telegram_bot, "_enviar_mensaje", return_value=True) as tg, \
+                mock.patch.object(avisos_portal, "avisar", return_value={"ok": True}) as portal:
+            scheduler._job_avisos_actividad()
+        tg.assert_not_called()
+        portal.assert_not_called()
+
+
+class TestMigracionMarcaPortal(unittest.TestCase):
+    """La columna nueva arranca copiando la marca de Telegram (base vieja)."""
+
+    def test_backfill(self):
+        from sqlalchemy import text
+        ruta = os.path.join(_TMP_DIR, "migracion_marca.db").replace("\\", "/")
+        if os.path.exists(ruta):
+            os.remove(ruta)
+        engine = get_engine(f"sqlite:///{ruta}")
+        # Base "vieja": log_actividad sin la columna notificado_portal
+        with engine.begin() as conn:
+            conn.execute(text(
+                "CREATE TABLE log_actividad (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, "
+                "accion VARCHAR(40) NOT NULL, vencimiento_id INTEGER, plan_id INTEGER, "
+                "descripcion VARCHAR(400) NOT NULL, notificado_telegram BOOLEAN NOT NULL, "
+                "creado_en DATETIME NOT NULL)"))
+            conn.execute(text(
+                "INSERT INTO log_actividad (id, user_id, accion, descripcion, notificado_telegram, creado_en) "
+                "VALUES (1, 1, 'crear', 'viejo avisado', 1, '2026-10-01'), "
+                "(2, 1, 'crear', 'viejo pendiente', 0, '2026-10-01')"))
+        init_db(engine)
+        with engine.connect() as conn:
+            filas = dict(conn.execute(text(
+                "SELECT id, notificado_portal FROM log_actividad ORDER BY id")).fetchall())
+        engine.dispose()
+        self.assertTrue(bool(filas[1]))
+        self.assertFalse(bool(filas[2]))
+
+
 if __name__ == "__main__":
     unittest.main()

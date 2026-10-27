@@ -1,16 +1,22 @@
 """
 Avisos push por el Portal Piccolina (reemplazan a los de Telegram).
 
-Interruptor: variable AVISOS_POR_PORTAL. Solo si vale "1" se usan estos
-avisos; si no está (o vale otra cosa), todo sigue exactamente como antes,
-por el bot de Telegram (services/telegram_bot.py).
+Interruptor: variable AVISOS_POR_PORTAL.
+- "1"      → SOLO estos avisos push (Telegram no manda recordatorios).
+- "ambos"  → los DOS canales (transición hasta noviembre 2026, decisión de
+             Facu): Telegram exactamente como antes (hoy + "en 3 días",
+             resumen de los lunes, actividad) + estos push.
+- sin valor (u otro) → todo sigue exactamente como antes, por el bot de
+             Telegram (services/telegram_bot.py).
+Las dos preguntas que se hacen son `push_activo()` y `telegram_activo()`.
 
 Con el interruptor prendido quedan DOS avisos, los dos solo para Facu:
 1. Diario 09:00 → lo que vence HOY y no está pagado (si no hay nada, no avisa).
 2. Cada 5 min  → lo que cargó/editó/pagó la contadora (LogActividad),
    un solo aviso por tanda aunque sean varias acciones.
 
-Se eliminan el aviso "en 3 días vence" y el resumen de los lunes.
+Con "1" se eliminan el aviso "en 3 días vence" y el resumen de los lunes
+(con "ambos" siguen saliendo por Telegram).
 Los comandos del bot (/que_vence, etc.) no se tocan.
 """
 import os
@@ -28,9 +34,27 @@ DESTINATARIOS = ["facu"]
 MAX_LINEAS = 5
 
 
+def _valor_interruptor() -> str:
+    """Valor de AVISOS_POR_PORTAL, sin espacios y en minúscula."""
+    return os.getenv("AVISOS_POR_PORTAL", "").strip().lower()
+
+
+def push_activo() -> bool:
+    """¿Salen los avisos push por el Portal? Con "1" o con "ambos"."""
+    return _valor_interruptor() in ("1", "ambos")
+
+
+def telegram_activo() -> bool:
+    """¿Salen los recordatorios por Telegram como siempre? Sí, salvo con "1"."""
+    return _valor_interruptor() != "1"
+
+
 def avisos_por_portal() -> bool:
-    """¿Está prendido el interruptor? Solo "1" lo prende."""
-    return os.getenv("AVISOS_POR_PORTAL", "").strip() == "1"
+    """
+    ¿Está en modo SOLO Portal ("1")? Nombre viejo, se deja para no romper
+    llamadores. Para decidir qué canal manda, usar push_activo()/telegram_activo().
+    """
+    return _valor_interruptor() == "1"
 
 
 # ─── 1. Lo que vence hoy ──────────────────────────────────────────────────────
@@ -82,18 +106,21 @@ def avisar_vence_hoy():
 
 # ─── 2. Actividad de la contadora ─────────────────────────────────────────────
 
-def avisar_actividad_pendiente():
+def avisar_actividad_pendiente(marcar_telegram: bool = True):
     """
-    Junta los LogActividad todavía sin avisar y manda UN push a Facu.
-    Si el Portal confirma que lo recibió, los marca como avisados (la misma
-    marca que usaba Telegram, para que no se repitan). Si el Portal no
-    contesta, quedan pendientes y se reintenta en la próxima tanda.
+    Junta los LogActividad todavía sin avisar por el Portal y manda UN push
+    a Facu. Si el Portal confirma que lo recibió, los marca como avisados
+    (`notificado_portal`). Si el Portal no contesta, quedan pendientes y se
+    reintenta en la próxima tanda.
+
+    `marcar_telegram`: con "1" (solo push) se marca también la de Telegram,
+    como hasta ahora. Con "ambos" va False: Telegram lleva su propia cuenta.
     Devuelve cuántos se marcaron como avisados.
     """
     db = SessionFactory()
     try:
         logs = db.query(LogActividad).filter(
-            LogActividad.notificado_telegram.is_(False)
+            LogActividad.notificado_portal.is_(False)
         ).order_by(LogActividad.creado_en.asc()).limit(20).all()
         if not logs:
             return 0
@@ -121,7 +148,9 @@ def avisar_actividad_pendiente():
         if not (resp and resp.get("ok")):
             return 0
         for log in logs:
-            log.notificado_telegram = True
+            log.notificado_portal = True
+            if marcar_telegram:
+                log.notificado_telegram = True
         db.commit()
         return len(logs)
     finally:
