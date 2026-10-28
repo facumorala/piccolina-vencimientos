@@ -1,0 +1,33 @@
+{#
+  Campanita del encabezado: la convierte en link a /avisos/ con el número
+  rojo de avisos sin ver. Post-render (JS) para no tocar el _header.html
+  compartido. Ver app/bandeja_avisos.py. (Acá no hay `current_user` en las
+  plantillas: avisos_persona ya implica que hay alguien logueado.)
+#}
+{% if avisos_persona %}
+<script>
+  (function () {
+    var btn = document.querySelector('header button[aria-label="Notificaciones"]');
+    if (!btn) return;
+    var n = {{ avisos_sin_ver | default(0) | int }};
+    var a = document.createElement('a');
+    a.href = "{{ url_for('bandeja_avisos.lista') }}";
+    a.className = btn.className;
+    a.setAttribute('aria-label', n ? ('Avisos: ' + n + ' sin ver') : 'Avisos');
+    a.title = n ? (n + (n === 1 ? ' aviso sin ver' : ' avisos sin ver')) : 'Avisos';
+    a.style.color = 'inherit';
+    // Se queda con el ícono de la campana y descarta el puntito viejo.
+    var ico = btn.querySelector('svg');
+    if (ico) a.appendChild(ico);
+    if (n > 0) {
+      var b = document.createElement('span');
+      b.textContent = n > 9 ? '9+' : String(n);
+      b.style.cssText = 'position:absolute;top:-2px;right:-6px;min-width:17px;height:17px;' +
+        'padding:0 4px;border-radius:999px;background:#D92D20;color:#fff;font-size:10.5px;' +
+        'font-weight:700;line-height:17px;text-align:center;box-shadow:0 0 0 2px #fff;';
+      a.appendChild(b);
+    }
+    btn.replaceWith(a);
+  })();
+</script>
+{% endif %}

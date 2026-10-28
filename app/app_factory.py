@@ -60,6 +60,12 @@ def create_app() -> Flask:
     # ── Blueprints ──────────────────────────────────────────────────────────
     register_blueprints(app)
 
+    # ── Campanita del encabezado: bandeja de avisos (/avisos/) ──────────────
+    # Crea su tabla si falta. Ver bandeja_avisos.py.
+    import bandeja_avisos
+    from auth_helpers import current_user
+    bandeja_avisos.init_app(app, current_user)
+
     # ── Cache off para HTML (forzar refresh tras POST+redirect) ─────────────
     @app.after_request
     def _no_cache_html(response):

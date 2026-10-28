@@ -1,0 +1,51 @@
+{#
+  Bandeja de avisos (la campanita del encabezado). Ver app/bandeja_avisos.py.
+#}
+{% extends "base.html" %}
+
+{% block title %}Avisos{% endblock %}
+
+{% block content %}
+<section class="pt-10 pb-2">
+  <div class="smcaps mb-2" style="color: var(--brand);">· avisos ·</div>
+  <h1 class="huge" style="font-size: clamp(30px, 8vw, 48px);">Avisos</h1>
+  <p class="mt-3 text-[14px] thin max-w-xl" style="color: var(--ink-2);">
+    Los mismos que te llegan al celular, por si alguno se te pasó.
+    Se guardan los últimos {{ dias }} días.
+  </p>
+</section>
+
+{% if not persona %}
+<section class="card">
+  <p class="text-[14px]">No pude reconocer tu usuario del Portal, así que no sé qué avisos son tuyos.
+    Entrá desde el Portal Piccolina y vas a verlos acá.</p>
+</section>
+{% elif not avisos %}
+<section class="card">
+  <p class="text-[14px] thin" style="color: var(--ink-2);">No tenés avisos en los últimos {{ dias }} días.</p>
+</section>
+{% else %}
+<section class="card" style="padding: 0; overflow: hidden;">
+  {% for a in avisos %}
+  <a href="{{ url_for('bandeja_avisos.abrir', aviso_id=a.id) }}"
+     style="display: block; padding: 14px 18px; text-decoration: none; color: inherit;
+            {% if not loop.first %}border-top: 1px solid var(--rule);{% endif %}
+            {% if a.id in nuevos %}background: var(--brand-soft);{% endif %}">
+    <div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline;">
+      <strong class="text-[14px]" style="overflow-wrap: anywhere;">
+        {% if a.id in nuevos %}<span title="Nuevo" style="display: inline-block; width: 8px; height: 8px;
+          border-radius: 999px; background: #D92D20; margin-right: 6px; vertical-align: middle;"></span>{% endif %}
+        {{ a.titulo }}
+      </strong>
+      <span class="text-[12px] thin" style="color: var(--ink-3, #888); white-space: nowrap;">
+        {{ a.creado_en.strftime('%d/%m %H:%M') }}
+      </span>
+    </div>
+    {% if a.cuerpo %}
+    <div class="text-[13px] thin mt-1" style="color: var(--ink-2); white-space: pre-line; overflow-wrap: anywhere;">{{ a.cuerpo }}</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

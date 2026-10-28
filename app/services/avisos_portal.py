@@ -24,7 +24,8 @@ from decimal import Decimal
 
 from extensions import SessionFactory, today_ar
 from models import Vencimiento, LogActividad
-from portal_avisos import avisar
+# Pasa por la bandeja (campanita): guarda una copia y manda el push.
+from bandeja_avisos import avisar
 
 
 # Usuarios del PORTAL que reciben los avisos de Vencimientos.
