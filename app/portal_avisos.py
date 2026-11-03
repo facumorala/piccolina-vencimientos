@@ -13,6 +13,9 @@ Uso:
 - `ruta`: la pantalla de ESTE dashboard que se abre al tocar el aviso.
 - `clave`: opcional. Si ya se mandó un aviso con esa clave, el Portal no lo
   repite (ej. "sueldos-prueba-empleado-12" para avisar una sola vez).
+- `canal` (nov-2026): "push" (suena ya, es el de siempre), "resumen" (no
+  suena: entra en el resumen de las 10 del Portal) o "campanita" (no suena:
+  solo queda guardado). Todo queda en la campanita central del Portal.
 - Usa las mismas variables que la puerta del pase: PORTAL_URL,
   PORTAL_SSO_SLUG y PORTAL_SSO_SECRET. Si faltan, no hace nada.
 - Nunca rompe al que lo llama: si el Portal no contesta, lo anota en el log
@@ -35,11 +38,12 @@ def configurado():
     return bool(os.getenv("PORTAL_URL") and os.getenv("PORTAL_SSO_SLUG") and os.getenv("PORTAL_SSO_SECRET"))
 
 
-def _armar_pedido(para, titulo, cuerpo, ruta, categoria, clave):
+def _armar_pedido(para, titulo, cuerpo, ruta, categoria, clave, canal="push"):
     slug = os.environ["PORTAL_SSO_SLUG"]
     firmado = URLSafeTimedSerializer(os.environ["PORTAL_SSO_SECRET"], salt=SALT_AVISAR).dumps({
         "d": slug, "para": list(para), "titulo": titulo, "cuerpo": cuerpo or "",
         "ruta": ruta or "", "categoria": categoria or "", "clave": clave or "",
+        "canal": canal or "push",
     })
     return f"{os.environ['PORTAL_URL'].rstrip('/')}/api/avisar", json.dumps({"d": slug, "t": firmado}).encode()
 
@@ -54,11 +58,11 @@ def _mandar(url, cuerpo):
         return None
 
 
-def avisar(para, titulo, cuerpo="", ruta="", categoria="", clave=None, esperar=False):
+def avisar(para, titulo, cuerpo="", ruta="", categoria="", clave=None, esperar=False, canal="push"):
     """Pide al Portal que mande el aviso. Devuelve la respuesta solo si esperar=True."""
     if not configurado() or not para:
         return None
-    url, datos = _armar_pedido(para, titulo, cuerpo, ruta, categoria, clave)
+    url, datos = _armar_pedido(para, titulo, cuerpo, ruta, categoria, clave, canal)
     if esperar:
         return _mandar(url, datos)
     threading.Thread(target=_mandar, args=(url, datos), daemon=True).start()

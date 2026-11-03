@@ -108,7 +108,8 @@ def guardar(para, titulo, cuerpo="", ruta="", categoria="", clave=None):
         db.close()
 
 
-def avisar(para, titulo, cuerpo="", ruta="", categoria="", clave=None, esperar=False):
+def avisar(para, titulo, cuerpo="", ruta="", categoria="", clave=None, esperar=False,
+           canal="push"):
     """Guarda en la bandeja y manda el push por el Portal. Mismos parámetros y
     misma respuesta que portal_avisos.avisar."""
     import portal_avisos
@@ -116,7 +117,7 @@ def avisar(para, titulo, cuerpo="", ruta="", categoria="", clave=None, esperar=F
     if grupo:
         ruta = _ruta_con_marca(ruta, grupo)
     return portal_avisos.avisar(para, titulo, cuerpo, ruta=ruta, categoria=categoria,
-                                clave=clave, esperar=esperar)
+                                clave=clave, esperar=esperar, canal=canal)
 
 
 # ── Quién está mirando ──────────────────────────────────────────────────
@@ -162,6 +163,14 @@ def marcar_grupo(db, persona, grupo):
         {AvisoBandeja.visto_en: ahora_ar()}, synchronize_session=False)
     db.commit()
 
+
+
+def url_campanita_central():
+    """Dirección de "Mi resumen" del Portal: la campanita central con los
+    avisos de TODOS los sistemas (nov-2026). None si el Portal no está
+    configurado (entonces la campanita sigue abriendo /avisos/ de acá)."""
+    base = (os.getenv("PORTAL_URL") or "").strip().rstrip("/")
+    return f"{base}/resumen" if base.startswith("https://") else None
 
 # ── Pantalla + campanita ────────────────────────────────────────────────
 def init_app(app, current_user):
@@ -235,7 +244,9 @@ def init_app(app, current_user):
         db = extensions.get_db()
         try:
             persona = persona_actual(current_user())
-            return {"avisos_persona": persona, "avisos_sin_ver": sin_ver(db, persona)}
+            central = url_campanita_central()
+            return {"avisos_persona": persona, "avisos_central": central,
+                    "avisos_sin_ver": 0 if central else sin_ver(db, persona)}
         except Exception:
             db.rollback()
-            return {"avisos_persona": None, "avisos_sin_ver": 0}
+            return {"avisos_persona": None, "avisos_central": None, "avisos_sin_ver": 0}

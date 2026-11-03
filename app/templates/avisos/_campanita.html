@@ -9,9 +9,11 @@
   (function () {
     var btn = document.querySelector('header button[aria-label="Notificaciones"]');
     if (!btn) return;
-    var n = {{ avisos_sin_ver | default(0) | int }};
+    // nov-2026: con el Portal configurado, la campanita lleva a "Mi resumen"
+    // del Portal (la campanita CENTRAL, con todo junto) y el número vive allá.
+    var n = {{ 0 if avisos_central else (avisos_sin_ver | default(0) | int) }};
     var a = document.createElement('a');
-    a.href = "{{ url_for('bandeja_avisos.lista') }}";
+    a.href = "{{ avisos_central or url_for('bandeja_avisos.lista') }}";
     a.className = btn.className;
     a.setAttribute('aria-label', n ? ('Avisos: ' + n + ' sin ver') : 'Avisos');
     a.title = n ? (n + (n === 1 ? ' aviso sin ver' : ' avisos sin ver')) : 'Avisos';

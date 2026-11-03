@@ -13,7 +13,8 @@ Las dos preguntas que se hacen son `push_activo()` y `telegram_activo()`.
 Con el interruptor prendido quedan DOS avisos, los dos solo para Facu:
 1. Diario 09:00 → lo que vence HOY y no está pagado (si no hay nada, no avisa).
 2. Cada 5 min  → lo que cargó/editó/pagó la contadora (LogActividad),
-   un solo aviso por tanda aunque sean varias acciones.
+   un solo aviso por tanda aunque sean varias acciones. NO suena: entra en
+   el resumen diario de las 10:00 del Portal (canal "resumen", nov-2026).
 
 Con "1" se eliminan el aviso "en 3 días vence" y el resumen de los lunes
 (con "ambos" siguen saliendo por Telegram).
@@ -126,12 +127,16 @@ def avisar_actividad_pendiente(marcar_telegram: bool = True):
         if not logs:
             return 0
 
+        # (nov-2026: decisión de Facu) este aviso ya no suena: va al resumen
+        # diario de las 10:00 del Portal. Ahí se ve como una lista de títulos,
+        # así que cada título tiene que entenderse solo, sin abrir el cuerpo:
+        # quién, dónde y qué (o cuántos movimientos, si fue una tanda).
         quien = _nombre_contadora(logs)
         if len(logs) == 1:
-            titulo = f"👤 {quien}"
+            titulo = f"✏️ {quien} en Vencimientos: {logs[0].descripcion}"
             cuerpo = logs[0].descripcion
         else:
-            titulo = f"👤 {quien}: {len(logs)} movimientos en Vencimientos"
+            titulo = f"✏️ {quien}: {len(logs)} movimientos en Vencimientos"
             lineas = [f"• {log.descripcion}" for log in logs[:MAX_LINEAS]]
             if len(logs) > MAX_LINEAS:
                 lineas.append(f"… y {len(logs) - MAX_LINEAS} más")
@@ -145,6 +150,8 @@ def avisar_actividad_pendiente(marcar_telegram: bool = True):
             categoria="vencimientos.actividad",
             clave=f"vtos-actividad-{logs[0].id}-{logs[-1].id}",
             esperar=True,
+            # (nov-2026: decisión de Facu) sin sonido → resumen de las 10:00.
+            canal="resumen",
         )
         if not (resp and resp.get("ok")):
             return 0

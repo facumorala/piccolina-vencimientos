@@ -158,6 +158,9 @@ class TestVenceHoyPortal(BaseAvisos):
         self.assertEqual(k["ruta"], f"/vencimientos/?dia={self.hoy.isoformat()}")
         self.assertEqual(k["categoria"], "vencimientos.hoy")
         self.assertEqual(k["clave"], f"vence-hoy-{self.hoy.isoformat()}")
+        # (nov-2026: decisión de Facu) "vence hoy" sigue SONANDO: canal push
+        # (el de siempre, por defecto: no se pasa o se pasa "push").
+        self.assertEqual(k.get("canal", "push"), "push")
 
     def test_varios_con_total_y_lista(self):
         self.vto("IVA oct", 1000)
@@ -232,7 +235,7 @@ class TestActividadPortal(BaseAvisos):
         portal = self.correr()
         a, k = portal.call_args
         self.assertEqual(a[0], ["facu"])
-        self.assertEqual(a[1], "👤 Agustina")
+        self.assertEqual(a[1], "✏️ Agustina en Vencimientos: Cargó IVA oct $1.000")
         self.assertEqual(a[2], "Cargó IVA oct $1.000")
         self.assertEqual(k["ruta"], "/vencimientos/")
         self.assertTrue(k["esperar"])
@@ -245,11 +248,22 @@ class TestActividadPortal(BaseAvisos):
         portal = self.correr()
         portal.assert_called_once()
         a, k = portal.call_args
-        self.assertEqual(a[1], "👤 Agustina: 3 movimientos en Vencimientos")
+        self.assertEqual(a[1], "✏️ Agustina: 3 movimientos en Vencimientos")
         for texto in ("Cargó IVA", "Pagó IIBB", "Editó Edenor"):
             self.assertIn(texto, a[2])
         self.assertTrue(k["clave"].startswith("vtos-actividad-"))
         self.assertEqual(self.pendientes(), 0)
+
+    def test_actividad_va_al_resumen_sin_sonar(self):
+        # (nov-2026: decisión de Facu) lo que carga la contadora no suena:
+        # entra en el resumen diario de las 10:00 del Portal. Uno o varios.
+        self.log("Cargó IVA")
+        k = self.correr().call_args.kwargs
+        self.assertEqual(k["canal"], "resumen")
+        self.log("Pagó IIBB")
+        self.log("Editó Edenor")
+        k = self.correr().call_args.kwargs
+        self.assertEqual(k["canal"], "resumen")
 
     def test_si_el_portal_no_contesta_quedan_pendientes(self):
         self.log("Cargó IVA")
