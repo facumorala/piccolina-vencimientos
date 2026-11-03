@@ -185,11 +185,15 @@ def init_app(app, current_user):
                       .order_by(AvisoBandeja.creado_en.desc(), AvisoBandeja.id.desc())
                       .limit(MAX_EN_PANTALLA).all())
         nuevos = {a.id for a in avisos if a.visto_en is None}
-        if nuevos:
-            # Entrar a la bandeja = verlos. Esta vez se muestran resaltados.
-            db.query(AvisoBandeja).filter(AvisoBandeja.id.in_(nuevos)).update(
-                {AvisoBandeja.visto_en: ahora_ar()}, synchronize_session=False)
-            db.commit()
+        if persona:
+            # Entrar a la bandeja = verlos TODOS, no solo los que entran en
+            # pantalla: si no, con más de MAX_EN_PANTALLA sin ver el número de
+            # la campanita nunca volvía a 0 (2-nov-2026). Los nuevos se
+            # muestran resaltados esta vez.
+            if db.query(AvisoBandeja).filter(
+                    AvisoBandeja.para == persona, AvisoBandeja.visto_en.is_(None)).update(
+                    {AvisoBandeja.visto_en: ahora_ar()}, synchronize_session=False):
+                db.commit()
         return render_template("avisos/lista.html", avisos=avisos, nuevos=nuevos,
                                persona=persona, dias=DIAS_VISIBLES, avisos_sin_ver=0)
 
